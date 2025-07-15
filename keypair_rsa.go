@@ -16,19 +16,17 @@ import (
 // in a single type.
 type RSAKeyPair struct {
 	*KeyPair
-	client *Client
 }
 
 // NewRSAKeyPair creates a new RSAKeyPair from a KeyPair.
 // Returns an error if the KeyPair is not an RSA key.
-func NewRSAKeyPair(client *Client, keyPair *KeyPair) (*RSAKeyPair, error) {
+func NewRSAKeyPair(keyPair *KeyPair) (*RSAKeyPair, error) {
 	if keyPair.KeyType != KeyPairTypeRSA {
 		return nil, errors.New("key pair must be an RSA key")
 	}
 
 	return &RSAKeyPair{
 		KeyPair: keyPair,
-		client:  client,
 	}, nil
 }
 

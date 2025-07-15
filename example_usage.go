@@ -30,14 +30,12 @@ func Example() {
 	// Example 4: Using ED25519-specific functionality
 	exampleED25519SpecificOperations(client, ed25519KeyPair)
 
-	// Example 5: Using the new Client methods
-	exampleClientMethods(client)
 }
 
 // exampleGenericSigner shows how to use any key type as a crypto.Signer
 func exampleGenericSigner(client *Client, keyPair *KeyPair) {
 	// Get a generic signer - works for both RSA and ECDSA
-	signer := keyPair.AsSigner(client)
+	signer := keyPair.AsSigner()
 	if signer == nil {
 		fmt.Printf("Unsupported key type: %v\n", keyPair.KeyType)
 		return
@@ -154,52 +152,6 @@ func exampleED25519SpecificOperations(client *Client, keyPair *KeyPair) {
 
 	// But cannot be used as crypto.Decrypter (like ECDSA)
 	// var decrypter crypto.Decrypter = ed25519Key // This would not compile
-}
-
-// exampleClientMethods shows the new Client methods
-func exampleClientMethods(client *Client) {
-	keyLabel := "my-signing-key"
-
-	// Generic methods that work with any key type
-	signer, err := client.GetKeyPairSigner(keyLabel)
-	if err != nil {
-		fmt.Printf("Failed to get signer: %v\n", err)
-		return
-	}
-	_ = signer
-
-	// Type-specific methods for when you need specific functionality
-	rsaKey, err := client.GetRSAKeyPair(keyLabel)
-	if err != nil {
-		fmt.Printf("Key is not RSA or not found: %v\n", err)
-	} else {
-		// Now you have access to RSA-specific methods
-		_ = rsaKey
-	}
-
-	ecdsaKey, err := client.GetECDSAKeyPair(keyLabel)
-	if err != nil {
-		fmt.Printf("Key is not ECDSA or not found: %v\n", err)
-	} else {
-		// Now you have access to ECDSA-specific methods
-		_ = ecdsaKey
-	}
-
-	ed25519Key, err := client.GetED25519KeyPair(keyLabel)
-	if err != nil {
-		fmt.Printf("Key is not ED25519 or not found: %v\n", err)
-	} else {
-		// Now you have access to ED25519-specific methods
-		_ = ed25519Key
-	}
-
-	// Decryption is explicit about requiring RSA
-	decrypter, err := client.GetKeyPairDecrypter(keyLabel)
-	if err != nil {
-		fmt.Printf("Key doesn't support decryption (not RSA): %v\n", err)
-	} else {
-		_ = decrypter
-	}
 }
 
 func keyTypeToString(keyType KeyPairType) string {

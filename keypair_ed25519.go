@@ -13,25 +13,23 @@ import (
 // for ED25519 keys. Note that ED25519 keys do not support encryption/decryption operations.
 type ED25519KeyPair struct {
 	*KeyPair
-	client *Client
 }
 
 // NewED25519KeyPair creates a new ED25519KeyPair from a KeyPair.
 // Returns an error if the KeyPair is not an ED25519 key.
-func NewED25519KeyPair(client *Client, keyPair *KeyPair) (*ED25519KeyPair, error) {
+func NewED25519KeyPair(keyPair *KeyPair) (*ED25519KeyPair, error) {
 	if keyPair.KeyType != KeyPairTypeED25519 {
 		return nil, errors.New("key pair must be an ED25519 key")
 	}
 
 	return &ED25519KeyPair{
 		KeyPair: keyPair,
-		client:  client,
 	}, nil
 }
 
 // Public returns the public key corresponding to the private key.
 func (e *ED25519KeyPair) Public() crypto.PublicKey {
-	return e.KeyPair.PublicKey
+	return e.KeyPair.Public()
 }
 
 // Sign implements crypto.Signer interface for ED25519 keys.

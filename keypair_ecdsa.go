@@ -13,25 +13,23 @@ import (
 // for ECDSA keys. Note that ECDSA keys do not support encryption/decryption operations.
 type ECDSAKeyPair struct {
 	*KeyPair
-	client *Client
 }
 
 // NewECDSAKeyPair creates a new ECDSAKeyPair from a KeyPair.
 // Returns an error if the KeyPair is not an ECDSA key.
-func NewECDSAKeyPair(client *Client, keyPair *KeyPair) (*ECDSAKeyPair, error) {
+func NewECDSAKeyPair(keyPair *KeyPair) (*ECDSAKeyPair, error) {
 	if keyPair.KeyType != KeyPairTypeECDSA {
 		return nil, errors.New("key pair must be an ECDSA key")
 	}
-	
+
 	return &ECDSAKeyPair{
 		KeyPair: keyPair,
-		client:  client,
 	}, nil
 }
 
 // Public returns the public key corresponding to the private key.
 func (e *ECDSAKeyPair) Public() crypto.PublicKey {
-	return e.KeyPair.PublicKey
+	return e.KeyPair.Public()
 }
 
 // Sign implements crypto.Signer interface for ECDSA keys.

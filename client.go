@@ -2,7 +2,6 @@ package gopkcs11
 
 import (
 	"context"
-	"crypto"
 	"strings"
 	"sync"
 	"time"
@@ -155,7 +154,7 @@ func (c *Client) findSlotByTokenLabel(slots []uint) (uint, error) {
 			// Skip slots that can't be queried (might not have tokens)
 			continue
 		}
-		
+
 		// Compare token label (trim spaces as PKCS#11 labels are padded)
 		tokenLabel := strings.TrimSpace(tokenInfo.Label)
 		if tokenLabel == c.config.TokenLabel {
@@ -173,7 +172,7 @@ func (c *Client) findSlotByTokenSerial(slots []uint) (uint, error) {
 			// Skip slots that can't be queried (might not have tokens)
 			continue
 		}
-		
+
 		// Compare token serial number (trim spaces as PKCS#11 serials are padded)
 		tokenSerial := strings.TrimSpace(tokenInfo.SerialNumber)
 		if tokenSerial == c.config.TokenSerialNumber {
@@ -265,112 +264,148 @@ func (c *Client) Close() error {
 	return finalErr
 }
 
-// GetKeyPairSigner returns a crypto.Signer for the key pair with the specified label.
-// Uses the new key-type-specific implementation that consolidates functionality.
-func (c *Client) GetKeyPairSigner(keyLabel string) (crypto.Signer, error) {
-	keyPair, err := c.FindKeyPairByLabel(keyLabel)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to find key with label: %s", keyLabel)
+func attributeMap2Slice(attrs map[uint]any) []*pkcs11.Attribute {
+	attrSlice := make([]*pkcs11.Attribute, 0, len(attrs))
+	for k, v := range attrs {
+		attrSlice = append(attrSlice, pkcs11.NewAttribute(k, v))
 	}
-
-	return keyPair.AsSigner(c), nil
+	return attrSlice
 }
 
-// GetKeyPairSignerByID returns a crypto.Signer for the key pair with the specified ID.
-// Uses the new key-type-specific implementation that consolidates functionality.
-func (c *Client) GetKeyPairSignerByID(keyID []byte) (crypto.Signer, error) {
-	keyPair, err := c.FindKeyPairByID(keyID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find key by ID")
-	}
+func mergeAttribute(attrs map[uint]any, merges []*pkcs11.Attribute) map[uint]any {
 
-	return keyPair.AsSigner(c), nil
+	for _, attr := range merges {
+		attrs[attr.Type] = attr.Value
+	}
+	return attrs
+
 }
 
-// GetKeyPairDecrypter returns a crypto.Decrypter for the RSA key pair with the specified label.
-// Uses the new key-type-specific implementation. Only RSA keys support decryption.
-func (c *Client) GetKeyPairDecrypter(keyLabel string) (crypto.Decrypter, error) {
-	keyPair, err := c.FindKeyPairByLabel(keyLabel)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to find key with label: %s", keyLabel)
+// EncryptData encrypts data using the symmetric key with the specified PKCS#11 mechanism.
+// Common mechanisms include CKM_AES_CBC, CKM_AES_GCM, CKM_DES_CBC, etc.
+// The iv parameter is used for mechanisms that require an initialization vector.
+func (c *Client) EncryptData(key *SymmetricKey, mechanism uint, iv []byte, data []byte) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("symmetric key cannot be nil")
 	}
 
-	return keyPair.AsDecrypter(c)
+	session, err := c.GetSession()
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	// Create mechanism with IV if provided
+	var mech *pkcs11.Mechanism
+	if len(iv) > 0 {
+		mech = pkcs11.NewMechanism(mechanism, iv)
+	} else {
+		mech = pkcs11.NewMechanism(mechanism, nil)
+	}
+
+	// Initialize encryption
+	if err := c.ctx.EncryptInit(session, []*pkcs11.Mechanism{mech}, key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	// Perform encryption
+	ciphertext, err := c.ctx.Encrypt(session, data)
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	return ciphertext, nil
 }
 
-// GetKeyPairDecrypterByID returns a crypto.Decrypter for the RSA key pair with the specified ID.
-// Uses the new key-type-specific implementation. Only RSA keys support decryption.
-func (c *Client) GetKeyPairDecrypterByID(keyID []byte) (crypto.Decrypter, error) {
-	keyPair, err := c.FindKeyPairByID(keyID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find key by ID")
+// DecryptData decrypts data using the symmetric key with the specified PKCS#11 mechanism.
+// The mechanism and iv parameters must match those used for encryption.
+func (c *Client) DecryptData(key *SymmetricKey, mechanism uint, iv []byte, ciphertext []byte) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("symmetric key cannot be nil")
 	}
 
-	return keyPair.AsDecrypter(c)
+	session, err := c.GetSession()
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	// Create mechanism with IV if provided
+	var mech *pkcs11.Mechanism
+	if len(iv) > 0 {
+		mech = pkcs11.NewMechanism(mechanism, iv)
+	} else {
+		mech = pkcs11.NewMechanism(mechanism, nil)
+	}
+
+	// Initialize decryption
+	if err := c.ctx.DecryptInit(session, []*pkcs11.Mechanism{mech}, key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	// Perform decryption
+	plaintext, err := c.ctx.Decrypt(session, ciphertext)
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	return plaintext, nil
 }
 
-// GetRSAKeyPair returns an RSAKeyPair for the key with the specified label.
-// This provides access to RSA-specific operations like different padding schemes.
-func (c *Client) GetRSAKeyPair(keyLabel string) (*RSAKeyPair, error) {
-	keyPair, err := c.FindKeyPairByLabel(keyLabel)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to find key with label: %s", keyLabel)
+// WrapKey wraps a target key using a wrapping key with the specified PKCS#11 mechanism.
+// This is used for secure key transport and storage.
+// Common mechanisms include CKM_AES_KEY_WRAP, CKM_AES_CBC, etc.
+func (c *Client) WrapKey(wrappingKey *SymmetricKey, targetKeyHandle pkcs11.ObjectHandle, mechanism uint, iv []byte) ([]byte, error) {
+	if wrappingKey == nil {
+		return nil, errors.New("wrapping key cannot be nil")
 	}
 
-	return keyPair.AsRSAKeyPair(c)
+	session, err := c.GetSession()
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	// Create mechanism with IV if provided
+	var mech *pkcs11.Mechanism
+	if len(iv) > 0 {
+		mech = pkcs11.NewMechanism(mechanism, iv)
+	} else {
+		mech = pkcs11.NewMechanism(mechanism, nil)
+	}
+
+	// Wrap the key
+	wrappedKey, err := c.ctx.WrapKey(session, []*pkcs11.Mechanism{mech}, wrappingKey.Handle, targetKeyHandle)
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	return wrappedKey, nil
 }
 
-// GetRSAKeyPairByID returns an RSAKeyPair for the key with the specified ID.
-// This provides access to RSA-specific operations like different padding schemes.
-func (c *Client) GetRSAKeyPairByID(keyID []byte) (*RSAKeyPair, error) {
-	keyPair, err := c.FindKeyPairByID(keyID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find key by ID")
+// UnwrapKey unwraps a wrapped key using an unwrapping key with the specified PKCS#11 mechanism.
+// The keyTemplate parameter specifies the attributes for the unwrapped key object.
+// Returns the handle to the newly created unwrapped key.
+func (c *Client) UnwrapKey(unwrappingKey *SymmetricKey, wrappedKey []byte, mechanism uint, iv []byte, keyTemplate []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
+	if unwrappingKey == nil {
+		return 0, errors.New("unwrapping key cannot be nil")
 	}
 
-	return keyPair.AsRSAKeyPair(c)
-}
-
-// GetECDSAKeyPair returns an ECDSAKeyPair for the key with the specified label.
-// This provides access to ECDSA-specific operations.
-func (c *Client) GetECDSAKeyPair(keyLabel string) (*ECDSAKeyPair, error) {
-	keyPair, err := c.FindKeyPairByLabel(keyLabel)
+	session, err := c.GetSession()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to find key with label: %s", keyLabel)
+		return 0, ConvertPKCS11Error(err)
 	}
 
-	return keyPair.AsECDSAKeyPair(c)
-}
-
-// GetECDSAKeyPairByID returns an ECDSAKeyPair for the key with the specified ID.
-// This provides access to ECDSA-specific operations.
-func (c *Client) GetECDSAKeyPairByID(keyID []byte) (*ECDSAKeyPair, error) {
-	keyPair, err := c.FindKeyPairByID(keyID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find key by ID")
+	// Create mechanism with IV if provided
+	var mech *pkcs11.Mechanism
+	if len(iv) > 0 {
+		mech = pkcs11.NewMechanism(mechanism, iv)
+	} else {
+		mech = pkcs11.NewMechanism(mechanism, nil)
 	}
 
-	return keyPair.AsECDSAKeyPair(c)
-}
-
-// GetED25519KeyPair returns an ED25519KeyPair for the key with the specified label.
-// This provides access to ED25519-specific operations.
-func (c *Client) GetED25519KeyPair(keyLabel string) (*ED25519KeyPair, error) {
-	keyPair, err := c.FindKeyPairByLabel(keyLabel)
+	// Unwrap the key
+	handle, err := c.ctx.UnwrapKey(session, []*pkcs11.Mechanism{mech}, unwrappingKey.Handle, wrappedKey, keyTemplate)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find key by label")
+		return 0, ConvertPKCS11Error(err)
 	}
 
-	return keyPair.AsED25519KeyPair(c)
-}
-
-// GetED25519KeyPairByID returns an ED25519KeyPair for the key with the specified ID.
-// This provides access to ED25519-specific operations.
-func (c *Client) GetED25519KeyPairByID(keyID []byte) (*ED25519KeyPair, error) {
-	keyPair, err := c.FindKeyPairByID(keyID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find key by ID")
-	}
-
-	return keyPair.AsED25519KeyPair(c)
+	return handle, nil
 }
