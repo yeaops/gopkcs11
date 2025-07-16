@@ -10,20 +10,6 @@ func uintPtr(v uint) *uint {
 	return &v
 }
 
-func TestNewConfig(t *testing.T) {
-	config := NewConfig("/path/to/lib.so", 1, "1234")
-	
-	if config.LibraryPath != "/path/to/lib.so" {
-		t.Errorf("Expected LibraryPath '/path/to/lib.so', got '%s'", config.LibraryPath)
-	}
-	if config.SlotID == nil || *config.SlotID != 1 {
-		t.Errorf("Expected SlotID 1, got %v", config.SlotID)
-	}
-	if config.UserPIN != "1234" {
-		t.Errorf("Expected UserPIN '1234', got '%s'", config.UserPIN)
-	}
-}
-
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -112,163 +98,6 @@ func TestConfigValidate(t *testing.T) {
 			err := tt.config.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestNewConfigFromEnv(t *testing.T) {
-	// Save original environment
-	envVarsToSave := []string{
-		"PKCS11_LIBRARY_PATH", "PKCS11_USER_PIN", "PKCS11_SLOT_ID", 
-		"PKCS11_SLOT_INDEX", "PKCS11_TOKEN_LABEL", "PKCS11_TOKEN_SERIAL",
-	}
-	originalEnv := make(map[string]string)
-	for _, envVar := range envVarsToSave {
-		originalEnv[envVar] = os.Getenv(envVar)
-	}
-
-	// Clean up after test
-	defer func() {
-		for _, envVar := range envVarsToSave {
-			if originalEnv[envVar] != "" {
-				os.Setenv(envVar, originalEnv[envVar])
-			} else {
-				os.Unsetenv(envVar)
-			}
-		}
-	}()
-
-	tests := []struct {
-		name        string
-		envVars     map[string]string
-		expected    *Config
-		wantErr     bool
-	}{
-		{
-			name: "slot ID configuration",
-			envVars: map[string]string{
-				"PKCS11_LIBRARY_PATH": "/custom/path/lib.so",
-				"PKCS11_SLOT_ID":      "2",
-				"PKCS11_USER_PIN":     "secret",
-			},
-			expected: &Config{
-				LibraryPath: "/custom/path/lib.so",
-				SlotID:      uintPtr(2),
-				UserPIN:     "secret",
-			},
-			wantErr: false,
-		},
-		{
-			name: "token label configuration",
-			envVars: map[string]string{
-				"PKCS11_LIBRARY_PATH": "/custom/path/lib.so",
-				"PKCS11_TOKEN_LABEL":  "TestToken",
-				"PKCS11_USER_PIN":     "secret",
-			},
-			expected: &Config{
-				LibraryPath: "/custom/path/lib.so",
-				TokenLabel:  "TestToken",
-				UserPIN:     "secret",
-			},
-			wantErr: false,
-		},
-		{
-			name: "slot index configuration",
-			envVars: map[string]string{
-				"PKCS11_LIBRARY_PATH": "/custom/path/lib.so",
-				"PKCS11_SLOT_INDEX":   "1",
-				"PKCS11_USER_PIN":     "secret",
-			},
-			expected: &Config{
-				LibraryPath: "/custom/path/lib.so",
-				SlotIndex:   uintPtr(1),
-				UserPIN:     "secret",
-			},
-			wantErr: false,
-		},
-		{
-			name: "default values with required PIN (SlotID=0)",
-			envVars: map[string]string{
-				"PKCS11_USER_PIN": "secret",
-			},
-			expected: &Config{
-				LibraryPath: "/usr/lib/pkcs11/libpkcs11.so",
-				SlotID:      uintPtr(0),
-				UserPIN:     "secret",
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing user PIN",
-			envVars: map[string]string{
-				"PKCS11_LIBRARY_PATH": "/path/lib.so",
-				"PKCS11_SLOT_ID":      "1",
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid slot ID",
-			envVars: map[string]string{
-				"PKCS11_SLOT_ID":  "invalid",
-				"PKCS11_USER_PIN": "secret",
-			},
-			wantErr: true,
-		},
-		{
-			name: "multiple slot identification methods",
-			envVars: map[string]string{
-				"PKCS11_SLOT_ID":     "1",
-				"PKCS11_TOKEN_LABEL": "TestToken",
-				"PKCS11_USER_PIN":    "secret",
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Clear environment
-			for _, envVar := range envVarsToSave {
-				os.Unsetenv(envVar)
-			}
-
-			// Set test environment variables
-			for key, value := range tt.envVars {
-				os.Setenv(key, value)
-			}
-
-			config, err := NewConfigFromEnv()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewConfigFromEnv() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if err == nil && tt.expected != nil {
-				if config.LibraryPath != tt.expected.LibraryPath {
-					t.Errorf("Expected LibraryPath '%s', got '%s'", tt.expected.LibraryPath, config.LibraryPath)
-				}
-				
-				// Compare SlotID pointers
-				if (config.SlotID == nil) != (tt.expected.SlotID == nil) {
-					t.Errorf("SlotID pointer mismatch: got %v, expected %v", config.SlotID, tt.expected.SlotID)
-				} else if config.SlotID != nil && tt.expected.SlotID != nil && *config.SlotID != *tt.expected.SlotID {
-					t.Errorf("Expected SlotID %d, got %d", *tt.expected.SlotID, *config.SlotID)
-				}
-				
-				// Compare SlotIndex pointers
-				if (config.SlotIndex == nil) != (tt.expected.SlotIndex == nil) {
-					t.Errorf("SlotIndex pointer mismatch: got %v, expected %v", config.SlotIndex, tt.expected.SlotIndex)
-				} else if config.SlotIndex != nil && tt.expected.SlotIndex != nil && *config.SlotIndex != *tt.expected.SlotIndex {
-					t.Errorf("Expected SlotIndex %d, got %d", *tt.expected.SlotIndex, *config.SlotIndex)
-				}
-				
-				if config.TokenLabel != tt.expected.TokenLabel {
-					t.Errorf("Expected TokenLabel '%s', got '%s'", tt.expected.TokenLabel, config.TokenLabel)
-				}
-				if config.UserPIN != tt.expected.UserPIN {
-					t.Errorf("Expected UserPIN '%s', got '%s'", tt.expected.UserPIN, config.UserPIN)
-				}
 			}
 		})
 	}
@@ -393,8 +222,8 @@ func TestGetSlotIdentificationType(t *testing.T) {
 }
 
 func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && s[len(s)-len(substr):] == substr || 
-		   len(s) > len(substr) && findSubstring(s, substr)
+	return len(s) >= len(substr) && s[len(s)-len(substr):] == substr ||
+		len(s) > len(substr) && findSubstring(s, substr)
 }
 
 func findSubstring(s, substr string) bool {

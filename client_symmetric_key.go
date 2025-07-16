@@ -1,46 +1,10 @@
 package gopkcs11
 
 import (
-	"fmt"
-
 	"github.com/miekg/pkcs11"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
 )
-
-// SymmetricKeyType represents the type of symmetric encryption key.
-type SymmetricKeyType int
-
-const (
-	// SymmetricKeyTypeAES represents AES symmetric keys (128, 192, 256 bits)
-	SymmetricKeyTypeAES SymmetricKeyType = iota
-	// SymmetricKeyTypeDES represents DES symmetric keys (64 bits)
-	SymmetricKeyTypeDES
-	// SymmetricKeyType3DES represents 3DES symmetric keys (192 bits)
-	SymmetricKeyType3DES
-)
-
-// SymmetricKey represents a symmetric encryption key stored in the PKCS#11 HSM.
-// It can be used for encryption, decryption, key wrapping, and key unwrapping operations.
-type SymmetricKey struct {
-	client *Client
-
-	// Handle is the PKCS#11 object handle for the symmetric key
-	Handle pkcs11.ObjectHandle
-	// Label is the human-readable label for the symmetric key
-	Label string
-	// ID is the unique identifier for the symmetric key (generated from label)
-	ID []byte
-	// KeyType indicates the type of symmetric key (AES, DES, 3DES)
-	KeyType SymmetricKeyType
-	// KeySize is the key size in bits
-	KeySize int
-}
-
-// String returns a string representation of the symmetric key.
-func (k *SymmetricKey) String() string {
-	return fmt.Sprintf("SymmetricKey{Label: %s, Type: %v, Size: %d}", k.Label, k.KeyType, k.KeySize)
-}
 
 // GenerateAESKey generates a new AES symmetric key in the PKCS#11 device.
 // Supported key sizes are 128, 192, and 256 bits.

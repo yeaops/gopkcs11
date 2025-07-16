@@ -26,17 +26,6 @@ config := gopkcs11.NewConfigWithTokenLabel("/path/to/lib.so", "MyToken", "pin")
 config := gopkcs11.NewConfigWithTokenSerial("/path/to/lib.so", "123456", "pin")
 ```
 
-### Environment Variables
-
-| Variable              | Description                 | Default                     |
-| --------------------- | --------------------------- | --------------------------- |
-| `PKCS11_LIBRARY_PATH` | Path to PKCS#11 library     | Auto-detect bundled SoftHSM |
-| `PKCS11_USER_PIN`     | User PIN for authentication | Required                    |
-| `PKCS11_SLOT_ID`      | Slot ID to use              | -                           |
-| `PKCS11_SLOT_INDEX`   | Slot index to use           | -                           |
-| `PKCS11_TOKEN_LABEL`  | Token label to use          | -                           |
-| `PKCS11_TOKEN_SERIAL` | Token serial number to use  | -                           |
-
 ## Error Handling
 
 ```go

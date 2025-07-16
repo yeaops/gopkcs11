@@ -1,9 +1,6 @@
 package e2e
 
 import (
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -95,7 +92,11 @@ log.level = ERROR
 
 	// Create PKCS#11 config using TokenLabel for better reliability
 	// TokenLabel is more stable than SlotID across SoftHSM restarts
-	pkcs11Config := pkcs11.NewConfigWithTokenLabel(libraryPath, testConfig.TokenLabel, testConfig.UserPIN)
+	pkcs11Config := &pkcs11.Config{
+		LibraryPath: libraryPath,
+		TokenLabel:  testConfig.TokenLabel,
+		UserPIN:     testConfig.UserPIN,
+	}
 
 	// Cleanup function
 	cleanup := func() {
@@ -276,165 +277,5 @@ func CreateTestClient(t *testing.T) (*pkcs11.Client, func()) {
 	return client, func() {
 		client.Close()
 		cleanup()
-	}
-}
-
-// GenerateUniqueLabel generates a unique key label for testing
-func GenerateUniqueLabel() string {
-	return fmt.Sprintf("test-key-%d", time.Now().UnixNano())
-}
-
-// GenerateTestData creates test data of specified size
-func GenerateTestData(size int) []byte {
-	data := make([]byte, size)
-	rand.Read(data)
-	return data
-}
-
-// RequireNoError checks error and fails test if error is not nil
-func RequireNoError(t *testing.T, err error, msg string) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("%s: %v", msg, err)
-	}
-}
-
-// AssertKeyExists verifies that a key with the given label exists
-func AssertKeyExists(t *testing.T, client *pkcs11.Client, label string) *pkcs11.KeyPair {
-	t.Helper()
-
-	keyPair, err := client.FindKeyPairByLabel(label)
-	if err != nil {
-		t.Fatalf("Key with label '%s' should exist but was not found: %v", label, err)
-	}
-
-	return keyPair
-}
-
-// AssertKeyNotExists verifies that a key with the given label does not exist
-func AssertKeyNotExists(t *testing.T, client *pkcs11.Client, label string) {
-	t.Helper()
-
-	_, err := client.FindKeyPairByLabel(label)
-	if err == nil {
-		t.Fatalf("Key with label '%s' should not exist but was found", label)
-	}
-
-	if !pkcs11.IsKeyNotFoundError(err) {
-		t.Fatalf("Expected key not found error, got: %v", err)
-	}
-}
-
-// CleanupKeys removes all keys with the specified labels
-func CleanupKeys(t *testing.T, client *pkcs11.Client, labels ...string) {
-	t.Helper()
-
-	for _, label := range labels {
-		// Try to find and delete the key, ignore errors if key doesn't exist
-		if keyPair, err := client.FindKeyPairByLabel(label); err == nil {
-			// Note: PKCS#11 typically doesn't allow key deletion in testing scenarios
-			// This is mainly for documentation purposes
-			t.Logf("Key '%s' exists (handle: %d) but cannot be deleted in PKCS#11", label, keyPair.Handle)
-		}
-	}
-}
-
-// RunWithIsolation runs a test function with an isolated PKCS#11 client
-func RunWithIsolation(t *testing.T, testFunc func(*testing.T, *pkcs11.Client)) {
-	t.Helper()
-
-	client, cleanup := CreateTestClient(t)
-	defer cleanup()
-
-	testFunc(t, client)
-}
-
-// GenerateRSAKeyForTest generates an RSA key pair for testing with cleanup tracking
-func GenerateRSAKeyForTest(t *testing.T, client *pkcs11.Client, keySize int) (*pkcs11.KeyPair, string) {
-	t.Helper()
-
-	label := GenerateUniqueLabel()
-	keyPair, err := client.GenerateRSAKeyPair(label, keySize)
-	RequireNoError(t, err, "Failed to generate RSA key pair")
-
-	t.Logf("Generated RSA key pair: %s (%d bits)", label, keySize)
-	return keyPair, label
-}
-
-// GenerateECDSAKeyForTest generates an ECDSA key pair for testing with cleanup tracking
-func GenerateECDSAKeyForTest(t *testing.T, client *pkcs11.Client, curve elliptic.Curve) (*pkcs11.KeyPair, string) {
-	t.Helper()
-
-	label := GenerateUniqueLabel()
-	keyPair, err := client.GenerateECDSAKeyPair(label, curve)
-	RequireNoError(t, err, "Failed to generate ECDSA key pair")
-
-	t.Logf("Generated ECDSA key pair: %s", label)
-	return keyPair, label
-}
-
-// GenerateAESKeyForTest generates an AES key for testing with cleanup tracking
-func GenerateAESKeyForTest(t *testing.T, client *pkcs11.Client, keySize int) (*pkcs11.SymmetricKey, string) {
-	t.Helper()
-
-	label := GenerateUniqueLabel()
-	symKey, err := client.GenerateAESKey(label, keySize)
-	RequireNoError(t, err, "Failed to generate AES key")
-
-	t.Logf("Generated AES key: %s (%d bits)", label, keySize)
-	return symKey, label
-}
-
-// HashData computes SHA256 hash of the data
-func HashData(data []byte) []byte {
-	hash := sha256.Sum256(data)
-	return hash[:]
-}
-
-// SetupBenchmark provides a consistent setup for benchmark tests
-func SetupBenchmark(b *testing.B, benchFunc func(*testing.B, *pkcs11.Client)) {
-	b.Helper()
-
-	if testing.Short() {
-		b.Skip("Skipping benchmark in short mode")
-	}
-
-	// Note: This is a simplified version for benchmarks
-	// In practice, benchmark functions should set up their own clients
-	b.Skip("Use benchmark-specific setup instead of this wrapper")
-}
-
-// SkipIfShort skips the test if running in short mode
-func SkipIfShort(t *testing.T) {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("Skipping e2e test in short mode")
-	}
-}
-
-// LogTestStart logs the start of a test with consistent formatting
-func LogTestStart(t *testing.T, testName string) {
-	t.Helper()
-	t.Logf("=== Starting %s ===", testName)
-}
-
-// LogTestEnd logs the end of a test with consistent formatting
-func LogTestEnd(t *testing.T, testName string) {
-	t.Helper()
-	t.Logf("=== Completed %s ===", testName)
-}
-
-// TestCase represents a generic test case for parameterized testing
-type TestCase struct {
-	Name     string
-	TestFunc func(*testing.T)
-}
-
-// RunTestCases runs a series of test cases as subtests
-func RunTestCases(t *testing.T, testCases []TestCase) {
-	t.Helper()
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, tc.TestFunc)
 	}
 }

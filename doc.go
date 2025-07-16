@@ -1,182 +1,249 @@
-// Package pkcs11 provides a Go wrapper for PKCS#11 (Cryptoki) operations with HSM (Hardware Security Module) support.
+// Package gopkcs11 provides a high-level Go wrapper for PKCS#11 (Cryptoki) operations
+// with Hardware Security Module (HSM) support. It simplifies interaction with PKCS#11
+// compliant devices by providing abstractions for key management, digital signing,
+// encryption/decryption, and symmetric key operations.
 //
-// This package simplifies interaction with PKCS#11 compliant devices by providing high-level abstractions
-// for common cryptographic operations including key management, digital signing, encryption/decryption,
-// and key wrapping/unwrapping.
+// The library is designed to be thread-safe and provides a clean, idiomatic Go interface
+// for HSM operations while maintaining security best practices such as marking keys as
+// non-extractable and sensitive.
 //
-// # Key Features
+// # Core Components
 //
-//   - Connection management to PKCS#11 devices with automatic session handling
-//   - Support for RSA and ECDSA asymmetric key pairs (generation, import, operations)
-//   - Support for AES, DES, and 3DES symmetric keys (generation, import, operations)
-//   - Digital signing with multiple hash algorithms (SHA-1, SHA-224, SHA-256, SHA-384, SHA-512)
-//   - RSA encryption/decryption with PKCS#1 v1.5 and OAEP padding
-//   - Key wrapping and unwrapping operations
-//   - Comprehensive error handling with detailed PKCS#11 error codes
-//   - Thread-safe operations with proper session management
+// The library is organized around several key components:
+//
+// **Client**: The main entry point that manages the PKCS#11 context, session, and
+// authentication. It handles connection to HSM devices and provides methods for
+// key generation, import, and management.
+//
+// **KeyPair**: Represents asymmetric key pairs (RSA, ECDSA, ED25519) stored in the HSM.
+// Each key pair includes both private and public key handles, along with metadata
+// such as label, ID, and key type.
+//
+// **SymmetricKey**: Represents symmetric encryption keys (AES, DES, 3DES) stored in the HSM.
+// Used for bulk encryption/decryption operations and key wrapping/unwrapping.
+//
+// **BlockCipher**: Interface for block cipher operations with support for multiple
+// AES modes (ECB, CBC, GCM) and streaming operations.
+//
+// **Error Handling**: Comprehensive error types that categorize PKCS#11 errors for
+// easier handling and debugging.
+//
+// # Supported Key Types
+//
+// **Asymmetric Keys**:
+//   - RSA: 2048-bit and 4096-bit keys with PKCS#1 v1.5 and PSS padding for signing,
+//     PKCS#1 v1.5 and OAEP padding for encryption/decryption
+//   - ECDSA: P-256 and P-384 curves for digital signing
+//   - ED25519: Modern elliptic curve signatures with high security and performance
+//
+// **Symmetric Keys**:
+//   - AES: 128-bit, 192-bit, and 256-bit keys with multiple cipher modes
+//   - DES: 64-bit keys (included for legacy compatibility)
+//   - 3DES: 192-bit keys (triple DES)
+//
+// # Connection Management
+//
+// The library supports multiple methods for identifying and connecting to HSM slots:
+//   - Slot ID: Direct slot identifier
+//   - Slot Index: Zero-based index into the slot list
+//   - Token Label: Human-readable token label
+//   - Token Serial Number: Unique token serial number
+//
+// # Configuration
+//
+// HSM connections are configured using the Config struct with various creation methods:
+//
+//	// Basic configuration with slot ID
+//	config := &gopkcs11.Config{
+//	    LibraryPath: "/path/to/pkcs11.so",
+//	    SlotID:      &slotID,
+//	    UserPIN:     "pin",
+//	}
+//
+//	// Environment-based configuration
+//	config, err := gopkcs11.NewConfigFromEnv()
 //
 // # Basic Usage
 //
-// To use this package, first create a configuration and establish a connection to the PKCS#11 device:
+// **Creating a Client**:
 //
-//	config := pkcs11.NewConfig("/usr/lib/pkcs11/libpkcs11.so", 0, "userPIN")
-//	client, err := pkcs11.NewClient(config)
+//	config := &gopkcs11.Config{
+//	    LibraryPath: "/usr/lib/softhsm/libsofthsm2.so",
+//	    SlotID:      &slotID,
+//	    UserPIN:     "userpin",
+//	}
+//
+//	client, err := gopkcs11.NewClient(config)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer client.Close()
 //
-// # Environment Variable Configuration
+// **Key Generation**:
 //
-// You can also configure the client using environment variables:
-//
-//	config, err := pkcs11.NewConfigFromEnv()
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	client, err := pkcs11.NewClient(config)
-//
-// The following environment variables are supported:
-//   - PKCS11_LIBRARY_PATH: Path to the PKCS#11 library (default: /usr/lib/pkcs11/libpkcs11.so)
-//   - PKCS11_SLOT_ID: Slot ID to use (default: 0)
-//   - PKCS11_USER_PIN: User PIN for authentication (required)
-//
-// # Key Pair Operations
-//
-// Generate an RSA key pair:
-//
-//	keyPair, err := client.GenerateRSAKeyPair("my-rsa-key", 2048)
+//	// Generate RSA key pair
+//	rsaKey, err := client.GenerateRSAKeyPair(2048)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
-// Generate an ECDSA key pair:
-//
-//	keyPair, err := client.GenerateECDSAKeyPair("my-ecdsa-key", elliptic.P256())
+//	// Generate ECDSA key pair
+//	ecdsaKey, err := client.GenerateECDSAKeyPair(elliptic.P256())
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
-// Find an existing key pair:
-//
-//	keyPair, err := client.FindKeyPairByLabel("my-key")
+//	// Generate ED25519 key pair
+//	ed25519Key, err := client.GenerateED25519KeyPair()
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
-// # Digital Signing
+// **Digital Signing**:
 //
-// Get a signer for digital signatures:
+//	// Using generic crypto.Signer interface
+//	signer := rsaKey.AsSigner()
+//	data := []byte("Hello, World!")
+//	hash := sha256.Sum256(data)
+//	signature, err := signer.Sign(rand.Reader, hash[:], crypto.SHA256)
 //
-//	signer, err := client.GetSigner("my-key")
+//	// Using RSA-specific methods
+//	rsaSigner, _ := rsaKey.AsRSAKeyPair(client)
+//	signature, err := rsaSigner.SignPKCS1v15(crypto.SHA256, hash[:])
+//	pssSignature, err := rsaSigner.SignPSS(crypto.SHA256, hash[:])
+//
+// **Symmetric Encryption**:
+//
+//	// Generate AES key
+//	aesKey, err := client.GenerateAESKey(256)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
-//	// Sign data (data will be hashed automatically)
-//	hashingSigner, err := client.GetHashingSigner("my-key", crypto.SHA256)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	signature, err := hashingSigner.Sign(rand.Reader, data, crypto.SHA256)
-//
-// # Encryption and Decryption
-//
-// Get a decrypter for RSA operations:
-//
-//	decrypter, err := client.GetRSADecrypter("my-rsa-key")
+//	// Create cipher for encryption
+//	iv := make([]byte, 16)
+//	rand.Read(iv)
+//	cipher, err := gopkcs11.NewAESCBCCipher(aesKey, iv)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
-//	// Decrypt with PKCS#1 v1.5 padding
-//	plaintext, err := decrypter.DecryptPKCS1v15(ciphertext)
+//	// Encrypt data
+//	plaintext := []byte("sensitive data")
+//	ciphertext := make([]byte, len(plaintext)+16) // Extra space for padding
+//	err = cipher.Encrypt(ctx, ciphertext, plaintext)
 //
-//	// Decrypt with OAEP padding
-//	plaintext, err := decrypter.DecryptOAEP(crypto.SHA256, ciphertext, nil)
+// # Cryptographic Operations
 //
-// # Symmetric Key Operations
+// **RSA Operations**:
+//   - Digital signing with PKCS#1 v1.5 and PSS padding
+//   - Encryption/decryption with PKCS#1 v1.5 and OAEP padding
+//   - Key wrapping and unwrapping
 //
-// Generate an AES key:
+// **ECDSA Operations**:
+//   - Digital signing with automatic DER encoding
+//   - Support for multiple hash algorithms (SHA-1 through SHA-512)
 //
-//	symKey, err := client.GenerateAESKey("my-aes-key", 256)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
+// **ED25519 Operations**:
+//   - Deterministic digital signing of raw messages
+//   - High performance and security
 //
-// Encrypt and decrypt data:
-//
-//	ciphertext, err := client.EncryptData(symKey, pkcs11.CKM_AES_CBC, iv, data)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//
-//	plaintext, err := client.DecryptData(symKey, pkcs11.CKM_AES_CBC, iv, ciphertext)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//
-// # Key Wrapping
-//
-// Wrap a key with another key:
-//
-//	wrappedKey, err := client.WrapKey(wrappingKey, targetKey.Handle, pkcs11.CKM_AES_KEY_WRAP, nil)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//
-// # Error Handling
-//
-// The package provides comprehensive error handling with typed errors:
-//
-//	if pkcs11.IsKeyNotFoundError(err) {
-//	    // Handle key not found
-//	}
-//	if pkcs11.IsAuthenticationError(err) {
-//	    // Handle authentication failure
-//	}
-//	if pkcs11.IsSessionError(err) {
-//	    // Handle session-related errors
-//	}
+// **Symmetric Operations**:
+//   - Block encryption/decryption with multiple modes
+//   - Streaming operations for large data
+//   - Key wrapping and unwrapping
 //
 // # Thread Safety
 //
-// This package is designed to be thread-safe. The Client maintains proper synchronization
-// for session management and can be used concurrently from multiple goroutines.
+// The library is designed to be thread-safe with proper synchronization:
+//   - Client sessions are protected with read-write mutexes
+//   - Multiple goroutines can safely use the same client
+//   - Key operations are atomic and properly synchronized
 //
-// # Supported Algorithms
+// # Security Features
 //
-// Asymmetric Key Types:
-//   - RSA (2048, 4096 bits)
-//   - ECDSA (P-256, P-384 curves)
-//
-// Hash Algorithms (for signing):
-//   - SHA-1, SHA-224, SHA-256, SHA-384, SHA-512
-//
-// RSA Padding Schemes:
-//   - PKCS#1 v1.5 (signing and encryption)
-//   - PSS (signing)
-//   - OAEP (encryption)
-//
-// Symmetric Key Types:
-//   - AES (128, 192, 256 bits)
-//   - DES (64 bits)
-//   - 3DES (192 bits)
-//
-// # Security Considerations
-//
-// This package is designed for use with Hardware Security Modules (HSMs) and follows
-// security best practices:
+// **Key Protection**:
 //   - Private keys are marked as non-extractable and sensitive
 //   - All cryptographic operations are performed within the HSM
-//   - Session management includes proper cleanup and logout procedures
-//   - Error messages avoid leaking sensitive information
+//   - Keys cannot be extracted from the HSM
 //
-// # Limitations
+// **Session Management**:
+//   - Proper session cleanup and logout procedures
+//   - Session validation before operations
+//   - Automatic session management
 //
-//   - ECDSA encryption/decryption is not supported (only available for RSA)
-//   - Key import requires the private key material in software (consider security implications)
-//   - Some advanced PKCS#11 features are not exposed in this high-level interface
+// **Error Handling**:
+//   - Categorized error types for better error handling
+//   - No sensitive information leakage in error messages
+//   - Comprehensive error context and wrapping
 //
-// For complete API documentation, see the individual type and function documentation.
+// # Performance Considerations
+//
+// **Concurrent Operations**:
+//   - Thread-safe design allows concurrent key operations
+//   - Session pooling for improved performance
+//   - Efficient key lookup and caching
+//
+// **Memory Management**:
+//   - Minimal memory allocation for crypto operations
+//   - Efficient buffer management for streaming operations
+//   - Proper cleanup of sensitive data
+//
+// # Error Handling
+//
+// The library provides comprehensive error handling with categorized error types:
+//
+//	if err != nil {
+//	    if gopkcs11.IsAuthenticationError(err) {
+//	        log.Printf("Authentication failed: %v", err)
+//	    } else if gopkcs11.IsKeyNotFoundError(err) {
+//	        log.Printf("Key not found: %v", err)
+//	    } else {
+//	        log.Printf("General error: %v", err)
+//	    }
+//	}
+//
+// # Environment Variables
+//
+// The library supports configuration through environment variables:
+//   - PKCS11_LIBRARY_PATH: Path to PKCS#11 library
+//   - PKCS11_USER_PIN: User PIN for authentication
+//   - PKCS11_SLOT_ID: Slot ID to use
+//   - PKCS11_SLOT_INDEX: Slot index to use
+//   - PKCS11_TOKEN_LABEL: Token label to use
+//   - PKCS11_TOKEN_SERIAL: Token serial number to use
+//
+// # Examples
+//
+// See example_usage.go for comprehensive usage examples demonstrating:
+//   - Generic crypto.Signer interface usage
+//   - RSA-specific operations (signing and decryption)
+//   - ECDSA-specific operations (signing)
+//   - ED25519-specific operations (message signing)
+//   - Symmetric encryption with various modes
+//
+// # Testing
+//
+// The library includes comprehensive testing:
+//   - Unit tests for core functionality
+//   - End-to-end tests with SoftHSM
+//   - Performance benchmarks
+//   - Concurrency tests
+//
+// # Dependencies
+//
+// The library depends on:
+//   - github.com/miekg/pkcs11: Core PKCS#11 bindings
+//   - github.com/pkg/errors: Enhanced error handling
+//   - github.com/rs/xid: Unique identifier generation
+//
+// # Platform Support
+//
+// The library supports:
+//   - Linux (tested with SoftHSM and hardware HSMs)
+//   - macOS (tested with SoftHSM)
+//   - Windows (tested with SoftHSM)
+//
+// For more detailed examples and advanced usage, see the example_usage.go file
+// and the test suite in the test/e2e directory.
 package gopkcs11

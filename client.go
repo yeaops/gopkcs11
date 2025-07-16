@@ -2,6 +2,10 @@ package gopkcs11
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -264,6 +268,164 @@ func (c *Client) Close() error {
 	return finalErr
 }
 
+// Config holds the configuration parameters for connecting to a PKCS#11 device.
+type Config struct {
+	// LibraryPath is the filesystem path to the PKCS#11 library (.so, .dll, or .dylib)
+	LibraryPath string
+
+	// Slot identification method (only one should be used)
+	// SlotID is the slot id of the PKCS#11 device to use
+	SlotID *uint
+	// SlotIndex is the index of the slot to use (alternative to SlotID)
+	SlotIndex *uint
+	// TokenLabel is used to identify the token to use by label
+	TokenLabel string
+	// TokenSerialNumber is the serial number of the token to use
+	TokenSerialNumber string
+
+	// UserPIN is the PIN used to authenticate as a normal user (not SO)
+	UserPIN string
+}
+
+// SlotIdentificationType represents the type of slot identification method used
+type SlotIdentificationType int
+
+const (
+	SlotIdentificationByID SlotIdentificationType = iota
+	SlotIdentificationByIndex
+	SlotIdentificationByTokenLabel
+	SlotIdentificationByTokenSerial
+)
+
+// String returns the string representation of the slot identification type
+func (s SlotIdentificationType) String() string {
+	switch s {
+	case SlotIdentificationByID:
+		return "SlotID"
+	case SlotIdentificationByIndex:
+		return "SlotIndex"
+	case SlotIdentificationByTokenLabel:
+		return "TokenLabel"
+	case SlotIdentificationByTokenSerial:
+		return "TokenSerialNumber"
+	default:
+		return "Unknown"
+	}
+}
+
+// GetSlotIdentificationType returns the type of slot identification method configured
+func (c *Config) GetSlotIdentificationType() (SlotIdentificationType, error) {
+	var setFields []SlotIdentificationType
+
+	if c.SlotID != nil {
+		setFields = append(setFields, SlotIdentificationByID)
+	}
+	if c.SlotIndex != nil {
+		setFields = append(setFields, SlotIdentificationByIndex)
+	}
+	if c.TokenLabel != "" {
+		setFields = append(setFields, SlotIdentificationByTokenLabel)
+	}
+	if c.TokenSerialNumber != "" {
+		setFields = append(setFields, SlotIdentificationByTokenSerial)
+	}
+
+	if len(setFields) == 0 {
+		return SlotIdentificationByID, errors.New("no slot identification method specified - must set one of: SlotID, SlotIndex, TokenLabel, or TokenSerialNumber")
+	}
+
+	if len(setFields) > 1 {
+		var fieldNames []string
+		for _, field := range setFields {
+			fieldNames = append(fieldNames, field.String())
+		}
+		return SlotIdentificationByID, errors.Errorf("multiple slot identification methods specified: %v - only one can be set", fieldNames)
+	}
+
+	return setFields[0], nil
+}
+
+// Validate checks that the configuration is valid and the library path exists.
+// Returns an error if the library path is empty, the file doesn't exist, the user PIN is empty,
+// or if multiple slot identification methods are specified.
+func (c *Config) Validate() error {
+	if c.LibraryPath == "" {
+		return errors.New("library path cannot be empty")
+	}
+
+	if _, err := os.Stat(c.LibraryPath); os.IsNotExist(err) {
+		return errors.Errorf("PKCS#11 library not found at: %s", c.LibraryPath)
+	}
+
+	// Validate slot identification method
+	_, err := c.GetSlotIdentificationType()
+	if err != nil {
+		return errors.Wrap(err, "invalid slot identification configuration")
+	}
+
+	return nil
+}
+
+// String returns a string representation of the config with the PIN redacted for security.
+func (c *Config) String() string {
+	slotType, err := c.GetSlotIdentificationType()
+	if err != nil {
+		return fmt.Sprintf("PKCS11Config{LibraryPath: %s, SlotIdentification: INVALID, UserPIN: [REDACTED]}", c.LibraryPath)
+	}
+
+	var slotInfo string
+	switch slotType {
+	case SlotIdentificationByID:
+		slotInfo = fmt.Sprintf("SlotID: %d", *c.SlotID)
+	case SlotIdentificationByIndex:
+		slotInfo = fmt.Sprintf("SlotIndex: %d", *c.SlotIndex)
+	case SlotIdentificationByTokenLabel:
+		slotInfo = fmt.Sprintf("TokenLabel: %s", c.TokenLabel)
+	case SlotIdentificationByTokenSerial:
+		slotInfo = fmt.Sprintf("TokenSerialNumber: %s", c.TokenSerialNumber)
+	default:
+		slotInfo = "Unknown"
+	}
+
+	return fmt.Sprintf("PKCS11Config{LibraryPath: %s, %s, UserPIN: [REDACTED]}", c.LibraryPath, slotInfo)
+}
+
+// getBundledSoftHSMPath returns the path to the bundled SoftHSM library for the current platform.
+func getBundledSoftHSMPath() (string, error) {
+	// Get current file's directory to locate the lib directory
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", errors.New("could not determine current file path")
+	}
+
+	// Navigate to pkg/pkcs11/lib from current file location
+	pkcs11Dir := filepath.Dir(currentFile)
+	libDir := filepath.Join(pkcs11Dir, "lib")
+
+	// Determine platform
+	platform := runtime.GOOS + "-" + runtime.GOARCH
+
+	// Convert Go architecture names to our naming convention
+	switch runtime.GOARCH {
+	case "amd64":
+		// Keep as is
+	case "arm64":
+		// Keep as is
+	default:
+		return "", errors.Errorf("unsupported architecture: %s", runtime.GOARCH)
+	}
+
+	// Construct library path
+	libPath := filepath.Join(libDir, platform, "libsofthsm2.so")
+
+	// Check if file exists
+	if _, err := os.Stat(libPath); os.IsNotExist(err) {
+		return "", errors.Errorf("bundled SoftHSM library not found at: %s", libPath)
+	}
+
+	return libPath, nil
+}
+
 func attributeMap2Slice(attrs map[uint]any) []*pkcs11.Attribute {
 	attrSlice := make([]*pkcs11.Attribute, 0, len(attrs))
 	for k, v := range attrs {
@@ -279,133 +441,4 @@ func mergeAttribute(attrs map[uint]any, merges []*pkcs11.Attribute) map[uint]any
 	}
 	return attrs
 
-}
-
-// EncryptData encrypts data using the symmetric key with the specified PKCS#11 mechanism.
-// Common mechanisms include CKM_AES_CBC, CKM_AES_GCM, CKM_DES_CBC, etc.
-// The iv parameter is used for mechanisms that require an initialization vector.
-func (c *Client) EncryptData(key *SymmetricKey, mechanism uint, iv []byte, data []byte) ([]byte, error) {
-	if key == nil {
-		return nil, errors.New("symmetric key cannot be nil")
-	}
-
-	session, err := c.GetSession()
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	// Create mechanism with IV if provided
-	var mech *pkcs11.Mechanism
-	if len(iv) > 0 {
-		mech = pkcs11.NewMechanism(mechanism, iv)
-	} else {
-		mech = pkcs11.NewMechanism(mechanism, nil)
-	}
-
-	// Initialize encryption
-	if err := c.ctx.EncryptInit(session, []*pkcs11.Mechanism{mech}, key.Handle); err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	// Perform encryption
-	ciphertext, err := c.ctx.Encrypt(session, data)
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	return ciphertext, nil
-}
-
-// DecryptData decrypts data using the symmetric key with the specified PKCS#11 mechanism.
-// The mechanism and iv parameters must match those used for encryption.
-func (c *Client) DecryptData(key *SymmetricKey, mechanism uint, iv []byte, ciphertext []byte) ([]byte, error) {
-	if key == nil {
-		return nil, errors.New("symmetric key cannot be nil")
-	}
-
-	session, err := c.GetSession()
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	// Create mechanism with IV if provided
-	var mech *pkcs11.Mechanism
-	if len(iv) > 0 {
-		mech = pkcs11.NewMechanism(mechanism, iv)
-	} else {
-		mech = pkcs11.NewMechanism(mechanism, nil)
-	}
-
-	// Initialize decryption
-	if err := c.ctx.DecryptInit(session, []*pkcs11.Mechanism{mech}, key.Handle); err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	// Perform decryption
-	plaintext, err := c.ctx.Decrypt(session, ciphertext)
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	return plaintext, nil
-}
-
-// WrapKey wraps a target key using a wrapping key with the specified PKCS#11 mechanism.
-// This is used for secure key transport and storage.
-// Common mechanisms include CKM_AES_KEY_WRAP, CKM_AES_CBC, etc.
-func (c *Client) WrapKey(wrappingKey *SymmetricKey, targetKeyHandle pkcs11.ObjectHandle, mechanism uint, iv []byte) ([]byte, error) {
-	if wrappingKey == nil {
-		return nil, errors.New("wrapping key cannot be nil")
-	}
-
-	session, err := c.GetSession()
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	// Create mechanism with IV if provided
-	var mech *pkcs11.Mechanism
-	if len(iv) > 0 {
-		mech = pkcs11.NewMechanism(mechanism, iv)
-	} else {
-		mech = pkcs11.NewMechanism(mechanism, nil)
-	}
-
-	// Wrap the key
-	wrappedKey, err := c.ctx.WrapKey(session, []*pkcs11.Mechanism{mech}, wrappingKey.Handle, targetKeyHandle)
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	return wrappedKey, nil
-}
-
-// UnwrapKey unwraps a wrapped key using an unwrapping key with the specified PKCS#11 mechanism.
-// The keyTemplate parameter specifies the attributes for the unwrapped key object.
-// Returns the handle to the newly created unwrapped key.
-func (c *Client) UnwrapKey(unwrappingKey *SymmetricKey, wrappedKey []byte, mechanism uint, iv []byte, keyTemplate []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
-	if unwrappingKey == nil {
-		return 0, errors.New("unwrapping key cannot be nil")
-	}
-
-	session, err := c.GetSession()
-	if err != nil {
-		return 0, ConvertPKCS11Error(err)
-	}
-
-	// Create mechanism with IV if provided
-	var mech *pkcs11.Mechanism
-	if len(iv) > 0 {
-		mech = pkcs11.NewMechanism(mechanism, iv)
-	} else {
-		mech = pkcs11.NewMechanism(mechanism, nil)
-	}
-
-	// Unwrap the key
-	handle, err := c.ctx.UnwrapKey(session, []*pkcs11.Mechanism{mech}, unwrappingKey.Handle, wrappedKey, keyTemplate)
-	if err != nil {
-		return 0, ConvertPKCS11Error(err)
-	}
-
-	return handle, nil
 }

@@ -35,6 +35,44 @@ func (r *RSAKeyPair) Public() crypto.PublicKey {
 	return r.KeyPair.PublicKey
 }
 
+// Sign implements crypto.Signer interface for RSA keys.
+// Supports PKCS#1 v1.5 and PSS padding schemes based on the opts parameter.
+func (r *RSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	// Check if this is PSS signing
+	if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
+		return r.signPSS(digest, pssOpts)
+	}
+
+	// Default to PKCS#1 v1.5 signing
+	return r.signPKCS1v15(digest, opts.HashFunc())
+}
+
+// Decrypt implements crypto.Decrypter interface for RSA keys.
+// Supports PKCS#1 v1.5 and OAEP padding schemes based on the opts parameter.
+// If opts is nil, PKCS#1 v1.5 padding is used by default.
+func (r *RSAKeyPair) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
+	session, err := r.client.GetSession()
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	mechanism, err := r.getRSADecryptMechanism(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	plaintext, err := r.client.ctx.Decrypt(session, ciphertext)
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	return plaintext, nil
+}
+
 // digestInfo contains the ASN.1 structure for PKCS#1 v1.5 DigestInfo
 type digestInfo struct {
 	Algorithm algorithmIdentifier
@@ -196,44 +234,6 @@ func (r *RSAKeyPair) signPSS(digest []byte, opts *rsa.PSSOptions) ([]byte, error
 	}
 
 	return signature, nil
-}
-
-// Sign implements crypto.Signer interface for RSA keys.
-// Supports PKCS#1 v1.5 and PSS padding schemes based on the opts parameter.
-func (r *RSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	// Check if this is PSS signing
-	if pssOpts, ok := opts.(*rsa.PSSOptions); ok {
-		return r.signPSS(digest, pssOpts)
-	}
-
-	// Default to PKCS#1 v1.5 signing
-	return r.signPKCS1v15(digest, opts.HashFunc())
-}
-
-// Decrypt implements crypto.Decrypter interface for RSA keys.
-// Supports PKCS#1 v1.5 and OAEP padding schemes based on the opts parameter.
-// If opts is nil, PKCS#1 v1.5 padding is used by default.
-func (r *RSAKeyPair) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
-	session, err := r.client.GetSession()
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	mechanism, err := r.getRSADecryptMechanism(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := r.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	plaintext, err := r.client.ctx.Decrypt(session, ciphertext)
-	if err != nil {
-		return nil, ConvertPKCS11Error(err)
-	}
-
-	return plaintext, nil
 }
 
 // getRSADecryptMechanism determines the appropriate PKCS#11 mechanism for RSA decryption
