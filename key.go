@@ -77,29 +77,11 @@ func (kp *KeyPair) AsSigner() crypto.Signer {
 
 // AsDecrypter returns a crypto.Decrypter implementation for this key pair.
 // Only RSA keys support decryption operations.
-func (kp *KeyPair) AsDecrypter(client *Client) (crypto.Decrypter, error) {
+func (kp *KeyPair) AsDecrypter() (crypto.Decrypter, error) {
 	if kp.KeyType != KeyPairTypeRSA {
 		return nil, NewPKCS11Error(ErrUnknown, "decryption is only supported for RSA keys", nil)
 	}
 	return NewRSAKeyPair(kp)
-}
-
-// AsRSAKeyPair returns an RSAKeyPair for this key pair.
-// Returns an error if this is not an RSA key.
-func (kp *KeyPair) AsRSAKeyPair(client *Client) (*RSAKeyPair, error) {
-	return NewRSAKeyPair(kp)
-}
-
-// AsECDSAKeyPair returns an ECDSAKeyPair for this key pair.
-// Returns an error if this is not an ECDSA key.
-func (kp *KeyPair) AsECDSAKeyPair(client *Client) (*ECDSAKeyPair, error) {
-	return NewECDSAKeyPair(kp)
-}
-
-// AsED25519KeyPair returns an ED25519KeyPair for this key pair.
-// Returns an error if this is not an ED25519 key.
-func (kp *KeyPair) AsED25519KeyPair(client *Client) (*ED25519KeyPair, error) {
-	return NewED25519KeyPair(kp)
 }
 
 // SymmetricKeyType represents the type of symmetric encryption key.

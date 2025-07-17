@@ -483,6 +483,8 @@ func (c *Client) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, err
 	}
 
 	return &SymmetricKey{
+		client: c,
+
 		Handle:  handle,
 		Label:   label,
 		ID:      id,

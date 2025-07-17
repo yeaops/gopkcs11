@@ -57,7 +57,7 @@ func exampleGenericSigner(client *Client, keyPair *KeyPair) {
 // exampleRSASpecificOperations shows RSA-specific operations (signing + decryption)
 func exampleRSASpecificOperations(client *Client, rsaKeyPair *KeyPair) {
 	// Get RSA-specific implementation
-	rsaKey, err := rsaKeyPair.AsRSAKeyPair(client)
+	rsaKey, err := NewRSAKeyPair(rsaKeyPair)
 	if err != nil {
 		fmt.Printf("Not an RSA key: %v\n", err)
 		return
@@ -90,7 +90,7 @@ func exampleRSASpecificOperations(client *Client, rsaKeyPair *KeyPair) {
 // exampleECDSASpecificOperations shows ECDSA-specific operations (signing only)
 func exampleECDSASpecificOperations(client *Client, ecdsaKeyPair *KeyPair) {
 	// Get ECDSA-specific implementation
-	ecdsaKey, err := ecdsaKeyPair.AsECDSAKeyPair(client)
+	ecdsaKey, err := NewECDSAKeyPair(ecdsaKeyPair)
 	if err != nil {
 		fmt.Printf("Not an ECDSA key: %v\n", err)
 		return
@@ -115,7 +115,7 @@ func exampleECDSASpecificOperations(client *Client, ecdsaKeyPair *KeyPair) {
 // exampleED25519SpecificOperations shows how to use ED25519-specific functionality
 func exampleED25519SpecificOperations(client *Client, keyPair *KeyPair) {
 	// Get an ED25519-specific key pair
-	ed25519Key, err := keyPair.AsED25519KeyPair(client)
+	ed25519Key, err := NewED25519KeyPair(keyPair)
 	if err != nil {
 		fmt.Printf("Key is not ED25519: %v\n", err)
 		return
