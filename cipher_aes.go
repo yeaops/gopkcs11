@@ -11,6 +11,9 @@ import (
 const (
 	// AES BlockSize is 16 bytes.
 	AES_BLOCK_SIZE = 16
+	// DEFAULT_AES_STREAM_BUFFER_SIZE is the default buffer size for AES streaming operations.
+	// It's set to AES_BLOCK_SIZE * 256 = 4096 bytes for optimal performance.
+	DEFAULT_AES_STREAM_BUFFER_SIZE = AES_BLOCK_SIZE * 256
 )
 
 // pkcs11PaddingPKCS7 adds PKCS#7 padding to the data.
@@ -44,7 +47,8 @@ func pkcs11UnpaddingPKCS7(data []byte) ([]byte, error) {
 // ECB mode does not use an initialization vector (IV) and is not recommended
 // for most applications due to security concerns, but is included for compatibility.
 type AESECBCipher struct {
-	key *SymmetricKey
+	key        *SymmetricKey
+	bufferSize int
 }
 
 // NewAESECBCipher creates a new AES-ECB cipher with the given symmetric key.
@@ -55,7 +59,10 @@ func NewAESECBCipher(key *SymmetricKey) (*AESECBCipher, error) {
 	if key.KeyType != SymmetricKeyTypeAES {
 		return nil, errors.New("key must be AES type")
 	}
-	return &AESECBCipher{key: key}, nil
+	return &AESECBCipher{
+		key:        key,
+		bufferSize: DEFAULT_AES_STREAM_BUFFER_SIZE,
+	}, nil
 }
 
 // BlockSize returns the block size for AES (16 bytes).
@@ -66,6 +73,24 @@ func (c *AESECBCipher) BlockSize() int {
 // KeySize returns the key size in bytes.
 func (c *AESECBCipher) KeySize() int {
 	return c.key.KeySize / 8
+}
+
+// BufferSize returns the current buffer size for streaming operations.
+func (c *AESECBCipher) BufferSize() int {
+	return c.bufferSize
+}
+
+// SetBufferSize sets the buffer size for streaming operations.
+// The buffer size must be a positive multiple of AES_BLOCK_SIZE.
+func (c *AESECBCipher) SetBufferSize(size int) error {
+	if size <= 0 {
+		return errors.New("buffer size must be positive")
+	}
+	if size%AES_BLOCK_SIZE != 0 {
+		return errors.Errorf("buffer size must be a multiple of AES block size (%d bytes)", AES_BLOCK_SIZE)
+	}
+	c.bufferSize = size
+	return nil
 }
 
 // Encrypt encrypts the source data and writes the result to destination.
@@ -169,10 +194,10 @@ func (c *AESECBCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, ConvertPKCS11Error(err)
 	}
 
-	const bufferSize = 4096
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, c.bufferSize)
 	var totalWritten int
 	var pendingData []byte // Buffer for incomplete blocks
+	var processData []byte // Buffer for complete blocks to process
 	blockSize := c.BlockSize()
 
 	for {
@@ -186,84 +211,40 @@ func (c *AESECBCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		if err != nil && err != io.EOF {
 			return totalWritten, err
 		}
-		if n == 0 {
-			break
-		}
 
 		// Append new data to pending buffer
-		pendingData = append(pendingData, buffer[:n]...)
+		if n > 0 {
+			pendingData = append(pendingData, buffer[:n]...)
 
-		// Process as many complete blocks as possible
-		if len(pendingData) >= blockSize {
-			// Calculate how much data we can process (keeping some for potential padding)
-			processLen := (len(pendingData) / blockSize) * blockSize
-
-			// If this is not EOF, leave at least one incomplete block for potential final padding
-			if err != io.EOF && len(pendingData) > processLen {
-				// Keep the last incomplete block for next iteration
-				processLen = processLen - blockSize
-				if processLen <= 0 {
-					processLen = 0
-				}
+			if len(pendingData) >= blockSize {
+				completeBlocks := (len(pendingData) / blockSize) * blockSize
+				processData = pendingData[:completeBlocks]
+				pendingData = pendingData[completeBlocks:]
 			}
+		}
 
-			if processLen > 0 {
-				// Process multiple blocks at once
-				processData := pendingData[:processLen]
-				pendingData = pendingData[processLen:]
+		// If EOF, process all remaining data with padding and exit
+		if err == io.EOF {
+			// Add PKCS#7 padding to all remaining data
+			processData = pkcs11PaddingPKCS7(pendingData, blockSize)
+		}
 
-				ciphertext, err := c.key.client.ctx.EncryptUpdate(session, processData)
+		if len(processData) > 0 {
+			ciphertext, err := c.key.client.ctx.EncryptUpdate(session, processData)
+			if err != nil {
+				return totalWritten, ConvertPKCS11Error(err)
+			}
+			if len(ciphertext) > 0 {
+				written, err := dst.Write(ciphertext)
 				if err != nil {
-					return totalWritten, ConvertPKCS11Error(err)
+					return totalWritten, err
 				}
-
-				if len(ciphertext) > 0 {
-					written, err := dst.Write(ciphertext)
-					if err != nil {
-						return totalWritten, err
-					}
-					totalWritten += written
-				}
+				totalWritten += written
 			}
 		}
 
 		if err == io.EOF {
 			break
-		}
-	}
-
-	// Handle the remaining data with padding
-	if len(pendingData) > 0 {
-		// Add PKCS#7 padding to the remaining data
-		paddedData := pkcs11PaddingPKCS7(pendingData, blockSize)
-
-		ciphertext, err := c.key.client.ctx.EncryptUpdate(session, paddedData)
-		if err != nil {
-			return totalWritten, ConvertPKCS11Error(err)
-		}
-
-		if len(ciphertext) > 0 {
-			written, err := dst.Write(ciphertext)
-			if err != nil {
-				return totalWritten, err
-			}
-			totalWritten += written
-		}
-	} else {
-		// If no pending data, add a full padding block (required by PKCS#7)
-		paddingBlock := pkcs11PaddingPKCS7([]byte{}, blockSize)
-
-		ciphertext, err := c.key.client.ctx.EncryptUpdate(session, paddingBlock)
-		if err != nil {
-			return totalWritten, ConvertPKCS11Error(err)
-		}
-
-		if len(ciphertext) > 0 {
-			written, err := dst.Write(ciphertext)
-			if err != nil {
-				return totalWritten, err
-			}
-			totalWritten += written
 		}
 	}
 
@@ -307,8 +288,7 @@ func (c *AESECBCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, ConvertPKCS11Error(err)
 	}
 
-	const bufferSize = 4096
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, c.bufferSize)
 	var totalWritten int
 	var allPlaintext []byte // Buffer to collect all decrypted data for padding removal
 
@@ -375,8 +355,9 @@ func (c *AESECBCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 // AESCBCCipher implements the BlockCipher interface for AES-CBC mode.
 // CBC mode requires an initialization vector (IV) for security.
 type AESCBCCipher struct {
-	key *SymmetricKey
-	iv  []byte
+	key        *SymmetricKey
+	iv         []byte
+	bufferSize int
 }
 
 // NewAESCBCCipher creates a new AES-CBC cipher with the given symmetric key and IV.
@@ -391,7 +372,11 @@ func NewAESCBCCipher(key *SymmetricKey, iv []byte) (*AESCBCCipher, error) {
 	if len(iv) != 16 {
 		return nil, errors.New("IV must be 16 bytes for AES-CBC")
 	}
-	return &AESCBCCipher{key: key, iv: iv}, nil
+	return &AESCBCCipher{
+		key:        key,
+		iv:         iv,
+		bufferSize: DEFAULT_AES_STREAM_BUFFER_SIZE,
+	}, nil
 }
 
 // BlockSize returns the block size for AES (16 bytes).
@@ -402,6 +387,24 @@ func (c *AESCBCCipher) BlockSize() int {
 // KeySize returns the key size in bytes.
 func (c *AESCBCCipher) KeySize() int {
 	return c.key.KeySize / 8
+}
+
+// BufferSize returns the current buffer size for streaming operations.
+func (c *AESCBCCipher) BufferSize() int {
+	return c.bufferSize
+}
+
+// SetBufferSize sets the buffer size for streaming operations.
+// The buffer size must be a positive multiple of AES_BLOCK_SIZE.
+func (c *AESCBCCipher) SetBufferSize(size int) error {
+	if size <= 0 {
+		return errors.New("buffer size must be positive")
+	}
+	if size%AES_BLOCK_SIZE != 0 {
+		return errors.Errorf("buffer size must be a multiple of AES block size (%d bytes)", AES_BLOCK_SIZE)
+	}
+	c.bufferSize = size
+	return nil
 }
 
 // Encrypt encrypts the source data and writes the result to destination.
@@ -505,10 +508,10 @@ func (c *AESCBCCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, ConvertPKCS11Error(err)
 	}
 
-	const bufferSize = 4096
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, c.bufferSize)
 	var totalWritten int
 	var pendingData []byte // Buffer for incomplete blocks
+	var processData []byte // Buffer for complete blocks to process
 	blockSize := c.BlockSize()
 
 	for {
@@ -522,84 +525,40 @@ func (c *AESCBCCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		if err != nil && err != io.EOF {
 			return totalWritten, err
 		}
-		if n == 0 {
-			break
-		}
 
 		// Append new data to pending buffer
-		pendingData = append(pendingData, buffer[:n]...)
-		
-		// Process as many complete blocks as possible
-		if len(pendingData) >= blockSize {
-			// Calculate how much data we can process (keeping some for potential padding)
-			processLen := (len(pendingData) / blockSize) * blockSize
-			
-			// If this is not EOF, leave at least one incomplete block for potential final padding
-			if err != io.EOF && len(pendingData) > processLen {
-				// Keep the last incomplete block for next iteration
-				processLen = processLen - blockSize
-				if processLen <= 0 {
-					processLen = 0
-				}
+		if n > 0 {
+			pendingData = append(pendingData, buffer[:n]...)
+
+			if len(pendingData) >= blockSize {
+				completeBlocks := (len(pendingData) / blockSize) * blockSize
+				processData = pendingData[:completeBlocks]
+				pendingData = pendingData[completeBlocks:]
 			}
-			
-			if processLen > 0 {
-				// Process multiple blocks at once
-				processData := pendingData[:processLen]
-				pendingData = pendingData[processLen:]
-				
-				ciphertext, err := c.key.client.ctx.EncryptUpdate(session, processData)
+		}
+
+		// If EOF, process all remaining data with padding and exit
+		if err == io.EOF {
+			// Add PKCS#7 padding to all remaining data
+			processData = pkcs11PaddingPKCS7(pendingData, blockSize)
+		}
+
+		if len(processData) > 0 {
+			ciphertext, err := c.key.client.ctx.EncryptUpdate(session, processData)
+			if err != nil {
+				return totalWritten, ConvertPKCS11Error(err)
+			}
+			if len(ciphertext) > 0 {
+				written, err := dst.Write(ciphertext)
 				if err != nil {
-					return totalWritten, ConvertPKCS11Error(err)
+					return totalWritten, err
 				}
-				
-				if len(ciphertext) > 0 {
-					written, err := dst.Write(ciphertext)
-					if err != nil {
-						return totalWritten, err
-					}
-					totalWritten += written
-				}
+				totalWritten += written
 			}
 		}
 
 		if err == io.EOF {
 			break
-		}
-	}
-
-	// Handle the remaining data with padding
-	if len(pendingData) > 0 {
-		// Add PKCS#7 padding to the remaining data
-		paddedData := pkcs11PaddingPKCS7(pendingData, blockSize)
-		
-		ciphertext, err := c.key.client.ctx.EncryptUpdate(session, paddedData)
-		if err != nil {
-			return totalWritten, ConvertPKCS11Error(err)
-		}
-		
-		if len(ciphertext) > 0 {
-			written, err := dst.Write(ciphertext)
-			if err != nil {
-				return totalWritten, err
-			}
-			totalWritten += written
-		}
-	} else {
-		// If no pending data, add a full padding block (required by PKCS#7)
-		paddingBlock := pkcs11PaddingPKCS7([]byte{}, blockSize)
-		
-		ciphertext, err := c.key.client.ctx.EncryptUpdate(session, paddingBlock)
-		if err != nil {
-			return totalWritten, ConvertPKCS11Error(err)
-		}
-		
-		if len(ciphertext) > 0 {
-			written, err := dst.Write(ciphertext)
-			if err != nil {
-				return totalWritten, err
-			}
-			totalWritten += written
 		}
 	}
 
@@ -643,8 +602,7 @@ func (c *AESCBCCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, ConvertPKCS11Error(err)
 	}
 
-	const bufferSize = 4096
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, c.bufferSize)
 	var totalWritten int
 	var allPlaintext []byte // Buffer to collect all decrypted data for padding removal
 
@@ -711,10 +669,11 @@ func (c *AESCBCCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 // AESGCMCipher implements the BlockCipher interface for AES-GCM mode.
 // GCM mode provides authenticated encryption with additional data (AEAD).
 type AESGCMCipher struct {
-	key       *SymmetricKey
-	iv        []byte
-	aad       []byte
-	tagLength int
+	key        *SymmetricKey
+	iv         []byte
+	aad        []byte
+	tagLength  int
+	bufferSize int
 }
 
 // NewAESGCMCipher creates a new AES-GCM cipher with the given symmetric key and IV.
@@ -733,9 +692,10 @@ func NewAESGCMCipher(key *SymmetricKey, iv []byte) (*AESGCMCipher, error) {
 		return nil, errors.New("IV cannot be empty for AES-GCM")
 	}
 	return &AESGCMCipher{
-		key:       key,
-		iv:        iv,
-		tagLength: 16, // Default GCM tag length
+		key:        key,
+		iv:         iv,
+		tagLength:  16, // Default GCM tag length
+		bufferSize: DEFAULT_AES_STREAM_BUFFER_SIZE,
 	}, nil
 }
 
@@ -765,6 +725,24 @@ func (c *AESGCMCipher) BlockSize() int {
 // KeySize returns the key size in bytes.
 func (c *AESGCMCipher) KeySize() int {
 	return c.key.KeySize / 8
+}
+
+// BufferSize returns the current buffer size for streaming operations.
+func (c *AESGCMCipher) BufferSize() int {
+	return c.bufferSize
+}
+
+// SetBufferSize sets the buffer size for streaming operations.
+// The buffer size must be a positive multiple of AES_BLOCK_SIZE.
+func (c *AESGCMCipher) SetBufferSize(size int) error {
+	if size <= 0 {
+		return errors.New("buffer size must be positive")
+	}
+	if size%AES_BLOCK_SIZE != 0 {
+		return errors.Errorf("buffer size must be a multiple of AES block size (%d bytes)", AES_BLOCK_SIZE)
+	}
+	c.bufferSize = size
+	return nil
 }
 
 // Encrypt encrypts the source data and writes the result to destination.
@@ -871,8 +849,7 @@ func (c *AESGCMCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, ConvertPKCS11Error(err)
 	}
 
-	const bufferSize = 4096
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, c.bufferSize)
 	var totalWritten int
 
 	for {
@@ -954,8 +931,7 @@ func (c *AESGCMCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, ConvertPKCS11Error(err)
 	}
 
-	const bufferSize = 4096
-	buffer := make([]byte, bufferSize)
+	buffer := make([]byte, c.bufferSize)
 	var totalWritten int
 
 	for {

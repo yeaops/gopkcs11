@@ -9,7 +9,7 @@ import (
 // GenerateAESKey generates a new AES symmetric key in the PKCS#11 device.
 // Supported key sizes are 128, 192, and 256 bits.
 // The generated key is marked as non-extractable and sensitive for security.
-func (c *Client) GenerateAESKey(keySize int, attrs ...*pkcs11.Attribute) (*SymmetricKey, error) {
+func (c *Client) GenerateAESKey(keySize int, attrs ...*Attribute) (*SymmetricKey, error) {
 	if keySize != 128 && keySize != 192 && keySize != 256 {
 		return nil, errors.New("AES key size must be 128, 192, or 256 bits")
 	}
@@ -64,7 +64,7 @@ func (c *Client) GenerateAESKey(keySize int, attrs ...*pkcs11.Attribute) (*Symme
 
 // GenerateDESKey generates a new DES symmetric key (64 bits) in the PKCS#11 device.
 // The generated key is marked as non-extractable and sensitive for security.
-func (c *Client) GenerateDESKey(attrs ...*pkcs11.Attribute) (*SymmetricKey, error) {
+func (c *Client) GenerateDESKey(attrs ...*Attribute) (*SymmetricKey, error) {
 	session, err := c.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
@@ -113,7 +113,7 @@ func (c *Client) GenerateDESKey(attrs ...*pkcs11.Attribute) (*SymmetricKey, erro
 
 // Generate3DESKey generates a new 3DES symmetric key (192 bits) in the PKCS#11 device.
 // The generated key is marked as non-extractable and sensitive for security.
-func (c *Client) Generate3DESKey(attrs ...*pkcs11.Attribute) (*SymmetricKey, error) {
+func (c *Client) Generate3DESKey(attrs ...*Attribute) (*SymmetricKey, error) {
 	session, err := c.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
@@ -163,7 +163,7 @@ func (c *Client) Generate3DESKey(attrs ...*pkcs11.Attribute) (*SymmetricKey, err
 // ImportAESKey imports existing AES key material into the PKCS#11 device.
 // Supported key sizes are 16, 24, or 32 bytes (128, 192, or 256 bits).
 // The imported key is marked as non-extractable and sensitive for security.
-func (c *Client) ImportAESKey(keyMaterial []byte, attrs ...*pkcs11.Attribute) (*SymmetricKey, error) {
+func (c *Client) ImportAESKey(keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
 	if len(keyMaterial) != 16 && len(keyMaterial) != 24 && len(keyMaterial) != 32 {
 		return nil, errors.New("AES key material must be 16, 24, or 32 bytes (128, 192, or 256 bits)")
 	}
@@ -220,7 +220,7 @@ func (c *Client) ImportAESKey(keyMaterial []byte, attrs ...*pkcs11.Attribute) (*
 // ImportDESKey imports existing DES key material into the PKCS#11 device.
 // Key material must be exactly 8 bytes (64 bits).
 // The imported key is marked as non-extractable and sensitive for security.
-func (c *Client) ImportDESKey(keyMaterial []byte, attrs ...*pkcs11.Attribute) (*SymmetricKey, error) {
+func (c *Client) ImportDESKey(keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
 	if len(keyMaterial) != 8 {
 		return nil, errors.New("DES key material must be exactly 8 bytes (64 bits)")
 	}
@@ -275,7 +275,7 @@ func (c *Client) ImportDESKey(keyMaterial []byte, attrs ...*pkcs11.Attribute) (*
 // Import3DESKey imports existing 3DES key material into the PKCS#11 device.
 // Key material must be exactly 24 bytes (192 bits).
 // The imported key is marked as non-extractable and sensitive for security.
-func (c *Client) Import3DESKey(keyMaterial []byte, attrs ...*pkcs11.Attribute) (*SymmetricKey, error) {
+func (c *Client) Import3DESKey(keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
 	if len(keyMaterial) != 24 {
 		return nil, errors.New("3DES key material must be exactly 24 bytes (192 bits)")
 	}
@@ -338,7 +338,7 @@ func (c *Client) GetSymmetricKey(keyID []byte) (*SymmetricKey, error) {
 
 // ListSymmetricKeys returns all symmetric keys stored in the PKCS#11 device.
 // Keys that cannot be processed (due to unsupported types, etc.) are silently skipped.
-func (c *Client) ListSymmetricKeys(attrs ...*pkcs11.Attribute) ([]*SymmetricKey, error) {
+func (c *Client) ListSymmetricKeys(attrs ...*Attribute) ([]*SymmetricKey, error) {
 
 	handles, err := c.listSymmetricKeyHandles(attrs...)
 	if err != nil {
@@ -377,7 +377,7 @@ func (c *Client) DeleteSymmetricKey(keyID []byte) error {
 	return nil
 }
 
-func (c *Client) listSymmetricKeyHandles(attrs ...*pkcs11.Attribute) ([]pkcs11.ObjectHandle, error) {
+func (c *Client) listSymmetricKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHandle, error) {
 	session, err := c.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
@@ -414,7 +414,7 @@ func (c *Client) listSymmetricKeyHandles(attrs ...*pkcs11.Attribute) ([]pkcs11.O
 }
 
 func (c *Client) getSymmetricKeyHandle(keyID []byte) (pkcs11.ObjectHandle, error) {
-	attrs := []*pkcs11.Attribute{
+	attrs := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 	}
@@ -437,7 +437,7 @@ func (c *Client) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, err
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	attrsQuery := []*pkcs11.Attribute{
+	attrsQuery := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),

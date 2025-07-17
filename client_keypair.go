@@ -16,7 +16,7 @@ import (
 // GenerateRSAKeyPair generates a new RSA key pair in the PKCS#11 device.
 // Supported key sizes are 2048 and 4096 bits.
 // The generated keys are marked as non-extractable and sensitive for security.
-func (c *Client) GenerateRSAKeyPair(keySize int, attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) GenerateRSAKeyPair(keySize int, attrs ...*Attribute) (*KeyPair, error) {
 	if keySize != 2048 && keySize != 4096 {
 		return nil, NewPKCS11Error(ErrInvalidInput, "RSA key size must be 2048 or 4096", nil)
 	}
@@ -90,7 +90,7 @@ func (c *Client) GenerateRSAKeyPair(keySize int, attrs ...*pkcs11.Attribute) (*K
 // GenerateECDSAKeyPair generates a new ECDSA key pair in the PKCS#11 device.
 // Supported curves are P-256 and P-384.
 // The generated keys are marked as non-extractable and sensitive for security.
-func (c *Client) GenerateECDSAKeyPair(curve elliptic.Curve, attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) GenerateECDSAKeyPair(curve elliptic.Curve, attrs ...*Attribute) (*KeyPair, error) {
 	var curveOID []byte
 	var keySize int
 
@@ -174,7 +174,7 @@ func (c *Client) GenerateECDSAKeyPair(curve elliptic.Curve, attrs ...*pkcs11.Att
 // GenerateED25519KeyPair generates a new ED25519 key pair in the PKCS#11 device.
 // ED25519 is a modern elliptic curve signature scheme providing high security and performance.
 // The generated keys are marked as non-extractable and sensitive for security.
-func (c *Client) GenerateED25519KeyPair(attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) GenerateED25519KeyPair(attrs ...*Attribute) (*KeyPair, error) {
 	session, err := c.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
@@ -258,7 +258,7 @@ func (c *Client) GetKeyPair(id []byte) (*KeyPair, error) {
 
 // ListKeyPairs returns all key pairs stored in the PKCS#11 device.
 // Keys that cannot be processed (due to unsupported types, etc.) are silently skipped.
-func (c *Client) ListKeyPairs(attrs ...*pkcs11.Attribute) ([]*KeyPair, error) {
+func (c *Client) ListKeyPairs(attrs ...*Attribute) ([]*KeyPair, error) {
 	privateHandles, err := c.listPrivateKeyHandles(attrs...)
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func (c *Client) ListKeyPairs(attrs ...*pkcs11.Attribute) ([]*KeyPair, error) {
 // ImportRSAKeyPair imports an existing RSA private key into the PKCS#11 device.
 // The imported key is marked as non-extractable and sensitive for security.
 // Both the private and public key objects are created in the device.
-func (c *Client) ImportRSAKeyPair(privateKey *rsa.PrivateKey, attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) ImportRSAKeyPair(privateKey *rsa.PrivateKey, attrs ...*Attribute) (*KeyPair, error) {
 	if privateKey == nil {
 		return nil, NewPKCS11Error(ErrInvalidInput, "private key cannot be nil", nil)
 	}
@@ -370,7 +370,7 @@ func (c *Client) ImportRSAKeyPair(privateKey *rsa.PrivateKey, attrs ...*pkcs11.A
 // ImportECDSAKeyPair imports an existing ECDSA private key into the PKCS#11 device.
 // The imported key is marked as non-extractable and sensitive for security.
 // Both the private and public key objects are created in the device.
-func (c *Client) ImportECDSAKeyPair(privateKey *ecdsa.PrivateKey, attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) ImportECDSAKeyPair(privateKey *ecdsa.PrivateKey, attrs ...*Attribute) (*KeyPair, error) {
 	if privateKey == nil {
 		return nil, NewPKCS11Error(ErrInvalidInput, "private key cannot be nil", nil)
 	}
@@ -483,7 +483,7 @@ func (c *Client) ImportECDSAKeyPair(privateKey *ecdsa.PrivateKey, attrs ...*pkcs
 // The imported key is marked as non-extractable and sensitive for security.
 // Both the private and public key objects are created in the device.
 // Uses a fallback strategy to handle different PKCS#11 implementation requirements.
-func (c *Client) ImportED25519KeyPair(privateKey ed25519.PrivateKey, attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) ImportED25519KeyPair(privateKey ed25519.PrivateKey, attrs ...*Attribute) (*KeyPair, error) {
 	if len(privateKey) != ed25519.PrivateKeySize {
 		return nil, NewPKCS11Error(ErrInvalidInput, "invalid ED25519 private key size", nil)
 	}
@@ -575,7 +575,7 @@ func (c *Client) ImportED25519KeyPair(privateKey ed25519.PrivateKey, attrs ...*p
 
 // ImportKeyPair imports a private key into the PKCS#11 device.
 // It automatically detects the key type (RSA, ECDSA, or ED25519) and calls the appropriate import function.
-func (c *Client) ImportKeyPair(privateKey crypto.PrivateKey, attrs ...*pkcs11.Attribute) (*KeyPair, error) {
+func (c *Client) ImportKeyPair(privateKey crypto.PrivateKey, attrs ...*Attribute) (*KeyPair, error) {
 	switch key := privateKey.(type) {
 	case *rsa.PrivateKey:
 		return c.ImportRSAKeyPair(key, attrs...)
@@ -602,17 +602,17 @@ func (c *Client) DeleteKeyPair(keyID []byte) error {
 	return nil
 }
 
-func (c *Client) listPublicKeyHandles(attrs ...*pkcs11.Attribute) ([]pkcs11.ObjectHandle, error) {
+func (c *Client) listPublicKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHandle, error) {
 	attrsQuery := append(attrs, pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY))
 	return c.listKeyHandles(attrsQuery...)
 }
 
-func (c *Client) listPrivateKeyHandles(attrs ...*pkcs11.Attribute) ([]pkcs11.ObjectHandle, error) {
+func (c *Client) listPrivateKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHandle, error) {
 	attrsQuery := append(attrs, pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY))
 	return c.listKeyHandles(attrsQuery...)
 }
 
-func (c *Client) listKeyHandles(attrs ...*pkcs11.Attribute) ([]pkcs11.ObjectHandle, error) {
+func (c *Client) listKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHandle, error) {
 	session, err := c.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
@@ -641,7 +641,7 @@ func (c *Client) listKeyHandles(attrs ...*pkcs11.Attribute) ([]pkcs11.ObjectHand
 }
 
 func (c *Client) getPrivateKeyHandle(keyID []byte) (pkcs11.ObjectHandle, error) {
-	attrs := []*pkcs11.Attribute{
+	attrs := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 	}
@@ -656,7 +656,7 @@ func (c *Client) getPrivateKeyHandle(keyID []byte) (pkcs11.ObjectHandle, error) 
 }
 
 func (c *Client) getPublicKeyHandle(keyID []byte) (pkcs11.ObjectHandle, error) {
-	attrs := []*pkcs11.Attribute{
+	attrs := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 	}
@@ -678,7 +678,7 @@ func (c *Client) getKeyPair(privHandle pkcs11.ObjectHandle) (*KeyPair, error) {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	attrsQuery := []*pkcs11.Attribute{
+	attrsQuery := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
@@ -756,7 +756,7 @@ func (c *Client) extractRSAPublicKey(pubHandle pkcs11.ObjectHandle) (*rsa.Public
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	attrsQeury := []*pkcs11.Attribute{
+	attrsQeury := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 	}
@@ -784,7 +784,7 @@ func (c *Client) extractECDSAPublicKey(pubHandle pkcs11.ObjectHandle) (*ecdsa.Pu
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	attrsQuery := []*pkcs11.Attribute{
+	attrsQuery := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	}
@@ -837,7 +837,7 @@ func (c *Client) extractECDSAPublicKeyWithCurve(pubHandle pkcs11.ObjectHandle, c
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	attrsQuery := []*pkcs11.Attribute{
+	attrsQuery := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	}
 
@@ -873,7 +873,7 @@ func (c *Client) extractED25519PublicKey(pubHandle pkcs11.ObjectHandle) (ed25519
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	attrsQuery := []*pkcs11.Attribute{
+	attrsQuery := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	}
 

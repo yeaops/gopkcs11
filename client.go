@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +11,8 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/pkg/errors"
 )
+
+type Attribute = pkcs11.Attribute
 
 // Client represents a connection to a PKCS#11 device (HSM).
 // It manages the PKCS#11 context, session, and authentication state.
@@ -390,55 +390,27 @@ func (c *Config) String() string {
 	return fmt.Sprintf("PKCS11Config{LibraryPath: %s, %s, UserPIN: [REDACTED]}", c.LibraryPath, slotInfo)
 }
 
-// getBundledSoftHSMPath returns the path to the bundled SoftHSM library for the current platform.
-func getBundledSoftHSMPath() (string, error) {
-	// Get current file's directory to locate the lib directory
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("could not determine current file path")
-	}
-
-	// Navigate to pkg/pkcs11/lib from current file location
-	pkcs11Dir := filepath.Dir(currentFile)
-	libDir := filepath.Join(pkcs11Dir, "lib")
-
-	// Determine platform
-	platform := runtime.GOOS + "-" + runtime.GOARCH
-
-	// Convert Go architecture names to our naming convention
-	switch runtime.GOARCH {
-	case "amd64":
-		// Keep as is
-	case "arm64":
-		// Keep as is
-	default:
-		return "", errors.Errorf("unsupported architecture: %s", runtime.GOARCH)
-	}
-
-	// Construct library path
-	libPath := filepath.Join(libDir, platform, "libsofthsm2.so")
-
-	// Check if file exists
-	if _, err := os.Stat(libPath); os.IsNotExist(err) {
-		return "", errors.Errorf("bundled SoftHSM library not found at: %s", libPath)
-	}
-
-	return libPath, nil
-}
-
-func attributeMap2Slice(attrs map[uint]any) []*pkcs11.Attribute {
-	attrSlice := make([]*pkcs11.Attribute, 0, len(attrs))
+func attributeMap2Slice(attrs map[uint]any) []*Attribute {
+	attrSlice := make([]*Attribute, 0, len(attrs))
 	for k, v := range attrs {
 		attrSlice = append(attrSlice, pkcs11.NewAttribute(k, v))
 	}
 	return attrSlice
 }
 
-func mergeAttribute(attrs map[uint]any, merges []*pkcs11.Attribute) map[uint]any {
+func mergeAttribute(attrs map[uint]any, merges []*Attribute) map[uint]any {
 
 	for _, attr := range merges {
 		attrs[attr.Type] = attr.Value
 	}
 	return attrs
 
+}
+
+func NewIDAttribute(id []byte) *Attribute {
+	return pkcs11.NewAttribute(pkcs11.CKA_ID, id)
+}
+
+func NewLabelAttribute(label string) *Attribute {
+	return pkcs11.NewAttribute(pkcs11.CKA_LABEL, label)
 }
