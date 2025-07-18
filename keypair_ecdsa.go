@@ -2,6 +2,7 @@ package gopkcs11
 
 import (
 	"crypto"
+	"encoding/asn1"
 	"io"
 	"math/big"
 
@@ -59,7 +60,8 @@ func (e *ECDSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpt
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	// Convert ECDSA signature from raw format (r||s) to DER encoding
+	// SoftHSM returns the signature in raw r||s format, not DER
+	// We need to convert it to DER format for Go's ecdsa.VerifyASN1
 	signature, err = e.convertECDSASignatureToDER(signature)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert ECDSA signature to DER format")
@@ -102,54 +104,14 @@ func (e *ECDSAKeyPair) convertECDSASignatureToDER(signature []byte) ([]byte, err
 	r := new(big.Int).SetBytes(signature[:halfLen])
 	s := new(big.Int).SetBytes(signature[halfLen:])
 
-	rBytes := r.Bytes()
-	sBytes := s.Bytes()
-
-	if len(rBytes) == 0 || len(sBytes) == 0 {
-		return nil, errors.New("invalid ECDSA signature components")
+	// Use Go's standard library to encode the signature as DER
+	// This is much simpler and more reliable than manual DER encoding
+	type ecdsaSignature struct {
+		R, S *big.Int
 	}
-
-	rLen := len(rBytes)
-	sLen := len(sBytes)
-
-	if rBytes[0] >= 0x80 {
-		rLen++
-	}
-	if sBytes[0] >= 0x80 {
-		sLen++
-	}
-
-	totalLen := 4 + rLen + sLen
-	if totalLen >= 0x80 {
-		totalLen++
-	}
-
-	der := make([]byte, 0, totalLen+2)
-	der = append(der, 0x30)
-
-	if totalLen-2 >= 0x80 {
-		der = append(der, 0x81, byte(totalLen-3))
-	} else {
-		der = append(der, byte(totalLen-2))
-	}
-
-	der = append(der, 0x02)
-	if rBytes[0] >= 0x80 {
-		der = append(der, byte(len(rBytes)+1), 0x00)
-	} else {
-		der = append(der, byte(len(rBytes)))
-	}
-	der = append(der, rBytes...)
-
-	der = append(der, 0x02)
-	if sBytes[0] >= 0x80 {
-		der = append(der, byte(len(sBytes)+1), 0x00)
-	} else {
-		der = append(der, byte(len(sBytes)))
-	}
-	der = append(der, sBytes...)
-
-	return der, nil
+	
+	sig := ecdsaSignature{R: r, S: s}
+	return asn1.Marshal(sig)
 }
 
 // SignHash provides a convenient method for ECDSA signing with a specific hash function.

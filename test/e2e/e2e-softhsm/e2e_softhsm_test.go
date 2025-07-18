@@ -45,7 +45,7 @@ func NewSoftHSMTestConfig() (*SoftHSMTestConfig, error) {
 }
 
 // SetupSoftHSM initializes a SoftHSM token for testing
-func SetupSoftHSM(t *testing.T) (*pkcs11.Config, func()) {
+func SetupSoftHSM(t testing.TB) (*pkcs11.Config, func()) {
 	t.Helper()
 
 	// Check if we have a bundled SoftHSM library
@@ -254,7 +254,7 @@ func validateLibraryPath(libPath string) error {
 }
 
 // RequireSoftHSM fails the test if SoftHSM is not available (SoftHSM is mandatory)
-func RequireSoftHSM(t *testing.T) {
+func RequireSoftHSM(t testing.TB) {
 	t.Helper()
 	if !IsSoftHSMAvailable() {
 		platform := runtime.GOOS + "-" + runtime.GOARCH
@@ -263,7 +263,7 @@ func RequireSoftHSM(t *testing.T) {
 }
 
 // CreateTestClient creates a PKCS#11 client for testing with automatic cleanup
-func CreateTestClient(t *testing.T) (*pkcs11.Client, func()) {
+func CreateTestClient(t testing.TB) (*pkcs11.Client, func()) {
 	t.Helper()
 
 	config, cleanup := SetupSoftHSM(t)
