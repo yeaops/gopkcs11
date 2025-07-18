@@ -228,28 +228,21 @@ func testAESBasicEncryptDecrypt(t *testing.T, cipher pkcs11.BlockCipher, plainte
 	ctx := context.Background()
 	src := []byte(plaintext)
 
-	// Calculate required buffer size for encryption (includes padding for ECB/CBC)
-	paddedLength := ((len(src) / cipher.BlockSize()) + 1) * cipher.BlockSize()
-	encrypted := make([]byte, paddedLength)
-
 	// Encrypt
-	err := cipher.Encrypt(ctx, encrypted, src)
+	encrypted, err := cipher.Encrypt(ctx, src)
 	if err != nil {
 		t.Fatalf("Encryption failed: %v", err)
 	}
 
-	// For ECB/CBC, the encrypted data length equals the padded data length
-	encryptedLength := paddedLength
-
-	decrypted := make([]byte, encryptedLength) // exact size for decryption
-	err = cipher.Decrypt(ctx, decrypted, encrypted[:encryptedLength])
+	// Decrypt
+	decrypted, err := cipher.Decrypt(ctx, encrypted)
 	if err != nil {
 		t.Fatalf("Decryption failed: %v", err)
 	}
 
-	// Compare (trim to original length since we may have padding)
-	if !bytes.Equal(src, decrypted[:len(src)]) {
-		t.Errorf("Decrypted data doesn't match original.\nOriginal: %s\nDecrypted: %s", src, decrypted[:len(src)])
+	// Compare
+	if !bytes.Equal(src, decrypted) {
+		t.Errorf("Decrypted data doesn't match original.\nOriginal: %s\nDecrypted: %s", src, decrypted)
 	}
 }
 
@@ -270,16 +263,13 @@ func testAESMultipleBlockSizes(t *testing.T, cipher pkcs11.BlockCipher) {
 			}
 
 			// Encrypt
-			paddedLength := ((size / cipher.BlockSize()) + 1) * cipher.BlockSize()
-			encrypted := make([]byte, paddedLength)
-			err := cipher.Encrypt(ctx, encrypted, src)
+			encrypted, err := cipher.Encrypt(ctx, src)
 			if err != nil {
 				t.Fatalf("Encryption failed for size %d: %v", size, err)
 			}
 
 			// Decrypt
-			decrypted := make([]byte, paddedLength)
-			err = cipher.Decrypt(ctx, decrypted, encrypted)
+			decrypted, err := cipher.Decrypt(ctx, encrypted)
 			if err != nil {
 				t.Fatalf("Decryption failed for size %d: %v", size, err)
 			}
@@ -296,14 +286,13 @@ func testAESEmptyDataError(t *testing.T, cipher pkcs11.BlockCipher) {
 	t.Helper()
 
 	ctx := context.Background()
-	dst := make([]byte, 32)
 
 	// Test empty source data
-	err := cipher.Encrypt(ctx, dst, []byte{})
+	_, err := cipher.Encrypt(ctx, []byte{})
 	if err == nil {
 		t.Error("Expected error for empty source data, got none")
 	}
-	if !strings.Contains(err.Error(), "source data cannot be empty") {
+	if !strings.Contains(err.Error(), "plaintext cannot be empty") {
 		t.Errorf("Expected empty data error, got: %v", err)
 	}
 }
@@ -311,17 +300,11 @@ func testAESEmptyDataError(t *testing.T, cipher pkcs11.BlockCipher) {
 func testAESBufferSizeTooSmall(t *testing.T, cipher pkcs11.BlockCipher) {
 	t.Helper()
 
-	ctx := context.Background()
-	src := []byte("test data")
-	dst := make([]byte, 1) // Too small
-
-	err := cipher.Encrypt(ctx, dst, src)
-	if err == nil {
-		t.Error("Expected error for small destination buffer, got none")
-	}
-	if !strings.Contains(err.Error(), "destination buffer too small") {
-		t.Errorf("Expected buffer size error, got: %v", err)
-	}
+	// This test is no longer relevant with the new interface
+	// since the cipher now returns the encrypted data directly
+	// and handles buffer sizing internally
+	_ = cipher // unused parameter
+	t.Skip("Buffer size test not applicable with new interface")
 }
 
 func testAESStreamingOperations(t *testing.T, cipher pkcs11.BlockCipher, data string) {
@@ -397,19 +380,14 @@ func testAESGCMBasicEncryptDecrypt(t *testing.T, cipher *pkcs11.AESGCMCipher, pl
 	ctx := context.Background()
 	src := []byte(plaintext)
 
-	// GCM includes authentication tag
-	encryptedSize := len(src) + 16 // 16 bytes for default tag
-	encrypted := make([]byte, encryptedSize)
-
 	// Encrypt
-	err := cipher.Encrypt(ctx, encrypted, src)
+	encrypted, err := cipher.Encrypt(ctx, src)
 	if err != nil {
 		t.Fatalf("GCM encryption failed: %v", err)
 	}
 
 	// Decrypt
-	decrypted := make([]byte, len(src))
-	err = cipher.Decrypt(ctx, decrypted, encrypted)
+	decrypted, err := cipher.Decrypt(ctx, encrypted)
 	if err != nil {
 		t.Fatalf("GCM decryption failed: %v", err)
 	}
@@ -431,16 +409,13 @@ func testAESGCMWithAAD(t *testing.T, cipher *pkcs11.AESGCMCipher) {
 	cipher.SetAAD(aad)
 
 	// Encrypt
-	encryptedSize := len(src) + 16 // 16 bytes for default tag
-	encrypted := make([]byte, encryptedSize)
-	err := cipher.Encrypt(ctx, encrypted, src)
+	encrypted, err := cipher.Encrypt(ctx, src)
 	if err != nil {
 		t.Fatalf("GCM encryption with AAD failed: %v", err)
 	}
 
 	// Decrypt with same AAD
-	decrypted := make([]byte, len(src))
-	err = cipher.Decrypt(ctx, decrypted, encrypted)
+	decrypted, err := cipher.Decrypt(ctx, encrypted)
 	if err != nil {
 		t.Fatalf("GCM decryption with AAD failed: %v", err)
 	}
@@ -452,7 +427,7 @@ func testAESGCMWithAAD(t *testing.T, cipher *pkcs11.AESGCMCipher) {
 
 	// Test with wrong AAD (should fail)
 	cipher.SetAAD([]byte("wrong aad"))
-	err = cipher.Decrypt(ctx, decrypted, encrypted)
+	_, err = cipher.Decrypt(ctx, encrypted)
 	if err == nil {
 		t.Error("Expected authentication failure with wrong AAD, got none")
 	}
@@ -475,16 +450,13 @@ func testAESGCMDifferentTagLengths(t *testing.T, cipher *pkcs11.AESGCMCipher) {
 			}
 
 			// Encrypt
-			encryptedSize := len(src) + tagLen
-			encrypted := make([]byte, encryptedSize)
-			err = cipher.Encrypt(ctx, encrypted, src)
+			encrypted, err := cipher.Encrypt(ctx, src)
 			if err != nil {
 				t.Fatalf("GCM encryption failed with tag length %d: %v", tagLen, err)
 			}
 
 			// Decrypt
-			decrypted := make([]byte, len(src))
-			err = cipher.Decrypt(ctx, decrypted, encrypted)
+			decrypted, err := cipher.Decrypt(ctx, encrypted)
 			if err != nil {
 				t.Fatalf("GCM decryption failed with tag length %d: %v", tagLen, err)
 			}
@@ -594,10 +566,9 @@ func TestAESCipherErrorCases(t *testing.T) {
 			t.Fatalf("Failed to create cipher: %v", err)
 		}
 
-		dst := make([]byte, 32)
 		src := []byte("test")
 
-		err = cipher.Encrypt(nil, dst, src)
+		_, err = cipher.Encrypt(nil, src)
 		if err == nil {
 			t.Error("Expected error for nil context, got none")
 		}
@@ -645,11 +616,10 @@ func TestAESCipherErrorCases(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		dst := make([]byte, 32)
 		// Ciphertext length not multiple of block size
 		invalidCiphertext := make([]byte, 17)
 
-		err = cipher.Decrypt(ctx, dst, invalidCiphertext)
+		_, err = cipher.Decrypt(ctx, invalidCiphertext)
 		if err == nil {
 			t.Error("Expected error for invalid ciphertext length, got none")
 		}

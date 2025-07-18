@@ -7,6 +7,9 @@ require (
 	github.com/yeaops/gopkcs11 v0.0.0
 )
 
-require github.com/miekg/pkcs11 v1.1.1 // indirect
+require (
+	github.com/miekg/pkcs11 v1.1.1 // indirect
+	github.com/rs/xid v1.6.0 // indirect
+)
 
 replace github.com/yeaops/gopkcs11 => ../../

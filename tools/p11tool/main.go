@@ -17,6 +17,7 @@ import (
 
 	"flag"
 
+	"github.com/miekg/pkcs11"
 	"github.com/pkg/errors"
 	"github.com/yeaops/gopkcs11"
 )
@@ -204,7 +205,9 @@ func generateKey(args []string) {
 
 	switch strings.ToLower(*keyType) {
 	case "rsa":
-		keyPair, err = client.GenerateRSAKeyPair(*label, *size)
+		// Create label attribute
+		labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+		keyPair, err = client.GenerateRSAKeyPair(*size, labelAttr)
 	case "ecdsa":
 		var ellipticCurve elliptic.Curve
 		switch strings.ToLower(*curve) {
@@ -216,9 +219,13 @@ func generateKey(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: Unsupported curve: %s\n", *curve)
 			os.Exit(1)
 		}
-		keyPair, err = client.GenerateECDSAKeyPair(*label, ellipticCurve)
+		// Create label attribute
+		labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+		keyPair, err = client.GenerateECDSAKeyPair(ellipticCurve, labelAttr)
 	case "ed25519":
-		keyPair, err = client.GenerateED25519KeyPair(*label)
+		// Create label attribute
+		labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+		keyPair, err = client.GenerateED25519KeyPair(labelAttr)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: Unsupported key type: %s\n", *keyType)
 		os.Exit(1)
@@ -316,7 +323,9 @@ func importKey(args []string) {
 	}
 	defer client.Close()
 
-	keyPair, err := client.ImportKeyPair(*label, privateKey)
+	// Create label attribute
+	labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+	keyPair, err := client.ImportKeyPair(privateKey, labelAttr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error importing key: %v\n", err)
 		os.Exit(1)
@@ -349,11 +358,18 @@ func exportKey(args []string) {
 	}
 	defer client.Close()
 
-	keyPair, err := client.FindKeyPairByLabel(*label)
+	// Find key pair by label using ListKeyPairs with label filter
+	labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+	keyPairs, err := client.ListKeyPairs(labelAttr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error finding key: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error listing keys: %v\n", err)
 		os.Exit(1)
 	}
+	if len(keyPairs) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: No key pair found with label: %s\n", *label)
+		os.Exit(1)
+	}
+	keyPair := keyPairs[0]
 
 	var publicKeyBytes []byte
 	switch strings.ToLower(*format) {
@@ -432,11 +448,19 @@ func signData(args []string) {
 	}
 	defer client.Close()
 
-	signer, err := client.GetKeyPairSigner(*label)
+	// Find key pair by label using ListKeyPairs with label filter
+	labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+	keyPairs, err := client.ListKeyPairs(labelAttr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting signer: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error listing keys: %v\n", err)
 		os.Exit(1)
 	}
+	if len(keyPairs) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: No key pair found with label: %s\n", *label)
+		os.Exit(1)
+	}
+	keyPair := keyPairs[0]
+	signer := keyPair.AsSigner()
 
 	signature, err := signer.Sign(rand.Reader, inputData, nil)
 	if err != nil {
@@ -484,7 +508,19 @@ func decryptData(args []string) {
 	}
 	defer client.Close()
 
-	decrypter, err := client.GetKeyPairDecrypter(*label)
+	// Find key pair by label using ListKeyPairs with label filter
+	labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+	keyPairs, err := client.ListKeyPairs(labelAttr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error listing keys: %v\n", err)
+		os.Exit(1)
+	}
+	if len(keyPairs) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: No key pair found with label: %s\n", *label)
+		os.Exit(1)
+	}
+	keyPair := keyPairs[0]
+	decrypter, err := keyPair.AsDecrypter()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting decrypter: %v\n", err)
 		os.Exit(1)
@@ -528,11 +564,18 @@ func showKeyInfo(args []string) {
 	}
 	defer client.Close()
 
-	keyPair, err := client.FindKeyPairByLabel(*label)
+	// Find key pair by label using ListKeyPairs with label filter
+	labelAttr := pkcs11.NewAttribute(pkcs11.CKA_LABEL, *label)
+	keyPairs, err := client.ListKeyPairs(labelAttr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error finding key: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error listing keys: %v\n", err)
 		os.Exit(1)
 	}
+	if len(keyPairs) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: No key pair found with label: %s\n", *label)
+		os.Exit(1)
+	}
+	keyPair := keyPairs[0]
 
 	fmt.Printf("Key Information:\n")
 	fmt.Printf("  Label: %s\n", keyPair.Label)
