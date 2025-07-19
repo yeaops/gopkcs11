@@ -25,7 +25,7 @@ This test suite validates:
 3. **Run Specific Test Categories**:
    ```bash
    # Basic functionality
-   go test -run TestClient -v
+   go test -run TestToken -v
    
    # Advanced features
    go test -run TestConcurrent -v

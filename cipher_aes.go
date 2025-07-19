@@ -95,79 +95,70 @@ func (c *AESECBCipher) SetBufferSize(size int) error {
 
 // Encrypt encrypts the source data and writes the result to destination.
 // For ECB mode, data is padded using PKCS#7 padding.
-func (c *AESECBCipher) Encrypt(ctx context.Context, dst, src []byte) error {
+func (c *AESECBCipher) Encrypt(ctx context.Context, plaintext []byte) ([]byte, error) {
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return nil, errors.New("context cannot be nil")
 	}
-	if len(src) == 0 {
-		return errors.New("source data cannot be empty")
+	if len(plaintext) == 0 {
+		return nil, errors.New("plaintext cannot be empty")
 	}
 
 	// Pad the data for ECB mode
-	paddedData := pkcs11PaddingPKCS7(src, c.BlockSize())
-	if len(dst) < len(paddedData) {
-		return errors.New("destination buffer too small")
-	}
+	paddedData := pkcs11PaddingPKCS7(plaintext, c.BlockSize())
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_ECB, nil)
-	if err := c.key.client.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
-		return ConvertPKCS11Error(err)
+	if err := c.key.token.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	ciphertext, err := c.key.client.ctx.Encrypt(session, paddedData)
+	ciphertext, err := c.key.token.ctx.Encrypt(session, paddedData)
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	copy(dst, ciphertext)
-	return nil
+	return ciphertext, nil
 }
 
-// Decrypt decrypts the source data and writes the result to destination.
+// Decrypt decrypts the source data and returns the result.
 // For ECB mode, PKCS#7 padding is removed from the result.
-func (c *AESECBCipher) Decrypt(ctx context.Context, dst, src []byte) error {
+func (c *AESECBCipher) Decrypt(ctx context.Context, ciphertext []byte) ([]byte, error) {
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return nil, errors.New("context cannot be nil")
 	}
-	if len(src) == 0 {
-		return errors.New("source data cannot be empty")
+	if len(ciphertext) == 0 {
+		return nil, errors.New("ciphertext cannot be empty")
 	}
-	if len(src)%c.BlockSize() != 0 {
-		return errors.New("ciphertext length must be multiple of block size")
+	if len(ciphertext)%c.BlockSize() != 0 {
+		return nil, errors.New("ciphertext length must be multiple of block size")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_ECB, nil)
-	if err := c.key.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
-		return ConvertPKCS11Error(err)
+	if err := c.key.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	plaintext, err := c.key.client.ctx.Decrypt(session, src)
+	paddedData, err := c.key.token.ctx.Decrypt(session, ciphertext)
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	// Remove PKCS#7 padding
-	unpaddedData, err := pkcs11UnpaddingPKCS7(plaintext)
+	plaintext, err := pkcs11UnpaddingPKCS7(paddedData)
 	if err != nil {
-		return errors.Wrap(err, "failed to remove padding")
+		return nil, errors.Wrap(err, "failed to remove padding")
 	}
 
-	if len(dst) < len(unpaddedData) {
-		return errors.New("destination buffer too small")
-	}
-
-	copy(dst, unpaddedData)
-	return nil
+	return plaintext, nil
 }
 
 // EncryptStream encrypts data from src and writes to dst in streaming fashion.
@@ -183,14 +174,14 @@ func (c *AESECBCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, errors.New("destination writer cannot be nil")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
 	// Initialize encryption
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_ECB, nil)
-	if err := c.key.client.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+	if err := c.key.token.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
@@ -230,7 +221,7 @@ func (c *AESECBCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		}
 
 		if len(processData) > 0 {
-			ciphertext, err := c.key.client.ctx.EncryptUpdate(session, processData)
+			ciphertext, err := c.key.token.ctx.EncryptUpdate(session, processData)
 			if err != nil {
 				return totalWritten, ConvertPKCS11Error(err)
 			}
@@ -249,7 +240,7 @@ func (c *AESECBCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 	}
 
 	// Call EncryptFinal to complete the operation
-	finalCiphertext, err := c.key.client.ctx.EncryptFinal(session)
+	finalCiphertext, err := c.key.token.ctx.EncryptFinal(session)
 	if err != nil {
 		return totalWritten, ConvertPKCS11Error(err)
 	}
@@ -277,14 +268,14 @@ func (c *AESECBCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, errors.New("destination writer cannot be nil")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
 	// Initialize decryption
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_ECB, nil)
-	if err := c.key.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+	if err := c.key.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
@@ -310,7 +301,7 @@ func (c *AESECBCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		data := buffer[:n]
 
 		// Always use DecryptUpdate for data chunks
-		plaintext, err := c.key.client.ctx.DecryptUpdate(session, data)
+		plaintext, err := c.key.token.ctx.DecryptUpdate(session, data)
 		if err != nil {
 			return totalWritten, ConvertPKCS11Error(err)
 		}
@@ -326,7 +317,7 @@ func (c *AESECBCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 	}
 
 	// Call DecryptFinal to complete the operation
-	finalPlaintext, err := c.key.client.ctx.DecryptFinal(session)
+	finalPlaintext, err := c.key.token.ctx.DecryptFinal(session)
 	if err != nil {
 		return totalWritten, ConvertPKCS11Error(err)
 	}
@@ -407,81 +398,72 @@ func (c *AESCBCCipher) SetBufferSize(size int) error {
 	return nil
 }
 
-// Encrypt encrypts the source data and writes the result to destination.
+// Encrypt encrypts the source data and returns the result.
 // For CBC mode, data is padded using PKCS#7 padding.
-func (c *AESCBCCipher) Encrypt(ctx context.Context, dst, src []byte) error {
+func (c *AESCBCCipher) Encrypt(ctx context.Context, plaintext []byte) ([]byte, error) {
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return nil, errors.New("context cannot be nil")
 	}
-	if len(src) == 0 {
-		return errors.New("source data cannot be empty")
+	if len(plaintext) == 0 {
+		return nil, errors.New("plaintext cannot be empty")
 	}
 
 	// Pad the data for CBC mode
-	paddedData := pkcs11PaddingPKCS7(src, c.BlockSize())
-	if len(dst) < len(paddedData) {
-		return errors.New("destination buffer too small")
-	}
+	paddedData := pkcs11PaddingPKCS7(plaintext, c.BlockSize())
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_CBC, c.iv)
-	if err := c.key.client.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
-		return ConvertPKCS11Error(err)
+	if err := c.key.token.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	ciphertext, err := c.key.client.ctx.Encrypt(session, paddedData)
+	ciphertext, err := c.key.token.ctx.Encrypt(session, paddedData)
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	copy(dst, ciphertext)
-	return nil
+	return ciphertext, nil
 }
 
-// Decrypt decrypts the source data and writes the result to destination.
+// Decrypt decrypts the source data and returns the result.
 // For CBC mode, PKCS#7 padding is removed from the result.
-func (c *AESCBCCipher) Decrypt(ctx context.Context, dst, src []byte) error {
+func (c *AESCBCCipher) Decrypt(ctx context.Context, ciphertext []byte) ([]byte, error) {
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return nil, errors.New("context cannot be nil")
 	}
-	if len(src) == 0 {
-		return errors.New("source data cannot be empty")
+	if len(ciphertext) == 0 {
+		return nil, errors.New("ciphertext cannot be empty")
 	}
-	if len(src)%c.BlockSize() != 0 {
-		return errors.New("ciphertext length must be multiple of block size")
+	if len(ciphertext)%c.BlockSize() != 0 {
+		return nil, errors.New("ciphertext length must be multiple of block size")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_CBC, c.iv)
-	if err := c.key.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
-		return ConvertPKCS11Error(err)
+	if err := c.key.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	plaintext, err := c.key.client.ctx.Decrypt(session, src)
+	paddedData, err := c.key.token.ctx.Decrypt(session, ciphertext)
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	// Remove PKCS#7 padding
-	unpaddedData, err := pkcs11UnpaddingPKCS7(plaintext)
+	plaintext, err := pkcs11UnpaddingPKCS7(paddedData)
 	if err != nil {
-		return errors.Wrap(err, "failed to remove padding")
+		return nil, errors.Wrap(err, "failed to remove padding")
 	}
 
-	if len(dst) < len(unpaddedData) {
-		return errors.New("destination buffer too small")
-	}
-
-	copy(dst, unpaddedData)
-	return nil
+	return plaintext, nil
 }
 
 // EncryptStream encrypts data from src and writes to dst in streaming fashion.
@@ -497,14 +479,14 @@ func (c *AESCBCCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, errors.New("destination writer cannot be nil")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
 	// Initialize encryption
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_CBC, c.iv)
-	if err := c.key.client.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+	if err := c.key.token.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
@@ -544,7 +526,7 @@ func (c *AESCBCCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		}
 
 		if len(processData) > 0 {
-			ciphertext, err := c.key.client.ctx.EncryptUpdate(session, processData)
+			ciphertext, err := c.key.token.ctx.EncryptUpdate(session, processData)
 			if err != nil {
 				return totalWritten, ConvertPKCS11Error(err)
 			}
@@ -563,7 +545,7 @@ func (c *AESCBCCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 	}
 
 	// Call EncryptFinal to complete the operation
-	finalCiphertext, err := c.key.client.ctx.EncryptFinal(session)
+	finalCiphertext, err := c.key.token.ctx.EncryptFinal(session)
 	if err != nil {
 		return totalWritten, ConvertPKCS11Error(err)
 	}
@@ -591,14 +573,14 @@ func (c *AESCBCCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, errors.New("destination writer cannot be nil")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
 	// Initialize decryption
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_CBC, c.iv)
-	if err := c.key.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+	if err := c.key.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
@@ -624,7 +606,7 @@ func (c *AESCBCCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		data := buffer[:n]
 
 		// Always use DecryptUpdate for data chunks
-		plaintext, err := c.key.client.ctx.DecryptUpdate(session, data)
+		plaintext, err := c.key.token.ctx.DecryptUpdate(session, data)
 		if err != nil {
 			return totalWritten, ConvertPKCS11Error(err)
 		}
@@ -640,7 +622,7 @@ func (c *AESCBCCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 	}
 
 	// Call DecryptFinal to complete the operation
-	finalPlaintext, err := c.key.client.ctx.DecryptFinal(session)
+	finalPlaintext, err := c.key.token.ctx.DecryptFinal(session)
 	if err != nil {
 		return totalWritten, ConvertPKCS11Error(err)
 	}
@@ -745,25 +727,19 @@ func (c *AESGCMCipher) SetBufferSize(size int) error {
 	return nil
 }
 
-// Encrypt encrypts the source data and writes the result to destination.
+// Encrypt encrypts the source data and returns the result.
 // For GCM mode, the result includes the authentication tag.
-func (c *AESGCMCipher) Encrypt(ctx context.Context, dst, src []byte) error {
+func (c *AESGCMCipher) Encrypt(ctx context.Context, plaintext []byte) ([]byte, error) {
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return nil, errors.New("context cannot be nil")
 	}
-	if len(src) == 0 {
-		return errors.New("source data cannot be empty")
-	}
-
-	// GCM ciphertext includes the tag
-	expectedLen := len(src) + c.tagLength
-	if len(dst) < expectedLen {
-		return errors.New("destination buffer too small")
+	if len(plaintext) == 0 {
+		return nil, errors.New("plaintext cannot be empty")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	// Create GCM parameters with IV, AAD, and tag size in bits
@@ -771,37 +747,31 @@ func (c *AESGCMCipher) Encrypt(ctx context.Context, dst, src []byte) error {
 	defer gcmParams.Free()
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_GCM, gcmParams)
-	if err := c.key.client.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
-		return ConvertPKCS11Error(err)
+	if err := c.key.token.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	ciphertext, err := c.key.client.ctx.Encrypt(session, src)
+	ciphertext, err := c.key.token.ctx.Encrypt(session, plaintext)
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	copy(dst, ciphertext)
-	return nil
+	return ciphertext, nil
 }
 
-// Decrypt decrypts the source data and writes the result to destination.
+// Decrypt decrypts the source data and returns the result.
 // For GCM mode, the source data should include the authentication tag.
-func (c *AESGCMCipher) Decrypt(ctx context.Context, dst, src []byte) error {
+func (c *AESGCMCipher) Decrypt(ctx context.Context, ciphertext []byte) ([]byte, error) {
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return nil, errors.New("context cannot be nil")
 	}
-	if len(src) <= c.tagLength {
-		return errors.New("source data too short for GCM tag")
-	}
-
-	expectedLen := len(src) - c.tagLength
-	if len(dst) < expectedLen {
-		return errors.New("destination buffer too small")
+	if len(ciphertext) <= c.tagLength {
+		return nil, errors.New("ciphertext too short for GCM tag")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
 	// Create GCM parameters with IV, AAD, and tag size in bits
@@ -809,17 +779,16 @@ func (c *AESGCMCipher) Decrypt(ctx context.Context, dst, src []byte) error {
 	defer gcmParams.Free()
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_GCM, gcmParams)
-	if err := c.key.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
-		return ConvertPKCS11Error(err)
+	if err := c.key.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	plaintext, err := c.key.client.ctx.Decrypt(session, src)
+	plaintext, err := c.key.token.ctx.Decrypt(session, ciphertext)
 	if err != nil {
-		return ConvertPKCS11Error(err)
+		return nil, ConvertPKCS11Error(err)
 	}
 
-	copy(dst, plaintext)
-	return nil
+	return plaintext, nil
 }
 
 // EncryptStream encrypts data from src and writes to dst in streaming fashion.
@@ -835,7 +804,7 @@ func (c *AESGCMCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, errors.New("destination writer cannot be nil")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
@@ -845,7 +814,7 @@ func (c *AESGCMCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 	defer gcmParams.Free()
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_GCM, gcmParams)
-	if err := c.key.client.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+	if err := c.key.token.ctx.EncryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
@@ -870,7 +839,7 @@ func (c *AESGCMCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 		data := buffer[:n]
 
 		// Always use EncryptUpdate for data chunks
-		ciphertext, err := c.key.client.ctx.EncryptUpdate(session, data)
+		ciphertext, err := c.key.token.ctx.EncryptUpdate(session, data)
 		if err != nil {
 			return totalWritten, ConvertPKCS11Error(err)
 		}
@@ -889,7 +858,7 @@ func (c *AESGCMCipher) EncryptStream(ctx context.Context, dst io.Writer, src io.
 	}
 
 	// Always call EncryptFinal to complete the operation and get the authentication tag
-	finalCiphertext, err := c.key.client.ctx.EncryptFinal(session)
+	finalCiphertext, err := c.key.token.ctx.EncryptFinal(session)
 	if err != nil {
 		return totalWritten, ConvertPKCS11Error(err)
 	}
@@ -917,7 +886,7 @@ func (c *AESGCMCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		return 0, errors.New("destination writer cannot be nil")
 	}
 
-	session, err := c.key.client.GetSession()
+	session, err := c.key.token.GetSession()
 	if err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
@@ -927,7 +896,7 @@ func (c *AESGCMCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 	defer gcmParams.Free()
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_GCM, gcmParams)
-	if err := c.key.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
+	if err := c.key.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, c.key.Handle); err != nil {
 		return 0, ConvertPKCS11Error(err)
 	}
 
@@ -952,7 +921,7 @@ func (c *AESGCMCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 		data := buffer[:n]
 
 		// Always use DecryptUpdate for data chunks
-		plaintext, err := c.key.client.ctx.DecryptUpdate(session, data)
+		plaintext, err := c.key.token.ctx.DecryptUpdate(session, data)
 		if err != nil {
 			return totalWritten, ConvertPKCS11Error(err)
 		}
@@ -971,7 +940,7 @@ func (c *AESGCMCipher) DecryptStream(ctx context.Context, dst io.Writer, src io.
 	}
 
 	// Always call DecryptFinal to complete the operation and verify the authentication tag
-	finalPlaintext, err := c.key.client.ctx.DecryptFinal(session)
+	finalPlaintext, err := c.key.token.ctx.DecryptFinal(session)
 	if err != nil {
 		return totalWritten, ConvertPKCS11Error(err)
 	}

@@ -395,3 +395,4 @@ func TestIsSessionError(t *testing.T) {
 		})
 	}
 }
+

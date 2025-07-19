@@ -42,7 +42,7 @@ func (e *ED25519KeyPair) Sign(rand io.Reader, message []byte, opts crypto.Signer
 		return nil, errors.New("ED25519 does not support pre-hashing; pass the raw message")
 	}
 
-	session, err := e.client.GetSession()
+	session, err := e.token.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -50,11 +50,11 @@ func (e *ED25519KeyPair) Sign(rand io.Reader, message []byte, opts crypto.Signer
 	// ED25519 uses CKM_EDDSA mechanism
 	mechanism := pkcs11.NewMechanism(CKM_EDDSA, nil)
 
-	if err := e.client.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
+	if err := e.token.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	signature, err := e.client.ctx.Sign(session, message)
+	signature, err := e.token.ctx.Sign(session, message)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}

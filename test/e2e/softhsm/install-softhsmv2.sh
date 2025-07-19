@@ -196,6 +196,15 @@ configure_build() {
             fi
 
             config_args="$config_args --with-openssl=$openssl_prefix"
+
+            # local botan_prefix
+            # if brew --prefix botan@2 >/dev/null 2>&1; then
+            #    botan_prefix=$(brew --prefix botan@2)
+            # else
+            #    botan_prefix="/usr/local/opt/botan"
+            # fi
+            # config_args="$config_args --with-botan=$botan_prefix"
+
             ;;
         Windows)
             # Windows-specific configuration
