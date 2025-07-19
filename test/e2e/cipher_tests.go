@@ -53,12 +53,12 @@ func RunCipherTests(t *testing.T, ctx *TestContext) {
 
 // TestAESECBCipher tests AES-ECB cipher functionality
 func TestAESECBCipher(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	// Generate AES key with a supported size
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := client.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -94,12 +94,12 @@ func TestAESECBCipher(t *testing.T, ctx *TestContext) {
 
 // TestAESCBCCipher tests AES-CBC cipher functionality
 func TestAESCBCCipher(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	// Generate AES key with a supported size
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := client.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -153,12 +153,12 @@ func TestAESCBCCipher(t *testing.T, ctx *TestContext) {
 
 // TestAESGCMCipher tests AES-GCM cipher functionality
 func TestAESGCMCipher(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	// Generate AES key with a supported size
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := client.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -213,13 +213,13 @@ func TestAESGCMCipher(t *testing.T, ctx *TestContext) {
 
 // TestAESCipherProperties tests cipher properties and configuration
 func TestAESCipherProperties(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	// Test different key sizes
 	for _, keySize := range ctx.Config.SupportedAESKeySizes {
 		t.Run(fmt.Sprintf("AES-%d", keySize), func(t *testing.T) {
-			key, err := client.GenerateAESKey(keySize)
+			key, err := token.GenerateAESKey(keySize)
 			if err != nil {
 				t.Fatalf("Failed to generate AES-%d key: %v", keySize, err)
 			}
@@ -260,7 +260,7 @@ func TestAESCipherProperties(t *testing.T, ctx *TestContext) {
 
 // TestAESCipherErrorCases tests various error scenarios
 func TestAESCipherErrorCases(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	t.Run("NilKey", func(t *testing.T) {
@@ -275,7 +275,7 @@ func TestAESCipherErrorCases(t *testing.T, ctx *TestContext) {
 
 	t.Run("NilContext", func(t *testing.T) {
 		keySize := ctx.Config.SupportedAESKeySizes[0]
-		key, err := client.GenerateAESKey(keySize)
+		key, err := token.GenerateAESKey(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate key: %v", err)
 		}
@@ -298,7 +298,7 @@ func TestAESCipherErrorCases(t *testing.T, ctx *TestContext) {
 
 	t.Run("InvalidCiphertextLength", func(t *testing.T) {
 		keySize := ctx.Config.SupportedAESKeySizes[0]
-		key, err := client.GenerateAESKey(keySize)
+		key, err := token.GenerateAESKey(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate key: %v", err)
 		}
@@ -322,7 +322,7 @@ func TestAESCipherErrorCases(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("MalformedData", func(t *testing.T) {
-		testAESMalformedData(t, ctx, client)
+		testAESMalformedData(t, ctx, token)
 	})
 }
 
@@ -332,11 +332,11 @@ func TestAESConcurrencyAndCancellation(t *testing.T, ctx *TestContext) {
 		t.Skip("Concurrency tests disabled in configuration")
 	}
 
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := client.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate key: %v", err)
 	}
@@ -356,11 +356,11 @@ func BenchmarkAESCipher(t *testing.T, ctx *TestContext) {
 		t.Skip("Performance tests disabled in configuration")
 	}
 
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := client.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate key: %v", err)
 	}
@@ -664,9 +664,9 @@ func testAESGCMDifferentTagLengths(t *testing.T, cipher *pkcs11.AESGCMCipher) {
 	}
 }
 
-func testAESMalformedData(t *testing.T, ctx *TestContext, client *pkcs11.Client) {
+func testAESMalformedData(t *testing.T, ctx *TestContext, token *pkcs11.Token) {
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := client.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate key: %v", err)
 	}

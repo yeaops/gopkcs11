@@ -20,51 +20,51 @@ func RunKeypairTests(t *testing.T, ctx *TestContext) {
 	t.Run("KeyPairGeneration", func(t *testing.T) {
 		TestKeypairGeneration(t, ctx)
 	})
-	
+
 	t.Run("KeyPairString", func(t *testing.T) {
 		TestKeypairString(t, ctx)
 	})
-	
+
 	t.Run("KeyPairPublic", func(t *testing.T) {
 		TestKeypairPublic(t, ctx)
 	})
-	
+
 	t.Run("KeyPairAsSigner", func(t *testing.T) {
 		TestKeypairAsSigner(t, ctx)
 	})
-	
+
 	t.Run("KeyPairAsDecrypter", func(t *testing.T) {
 		TestKeypairAsDecrypter(t, ctx)
 	})
-	
+
 	t.Run("KeyPairEdgeCases", func(t *testing.T) {
 		TestKeypairEdgeCases(t, ctx)
 	})
-	
+
 	t.Run("KeyPairIDHexEncoding", func(t *testing.T) {
 		TestKeypairIDHexEncoding(t, ctx)
 	})
-	
+
 	if !ctx.Config.SkipConcurrencyTests {
 		t.Run("KeyPairConcurrentAccess", func(t *testing.T) {
 			TestKeypairConcurrentAccess(t, ctx)
 		})
 	}
-	
+
 	t.Run("KeyPairFieldValidation", func(t *testing.T) {
 		TestKeypairFieldValidation(t, ctx)
 	})
-	
+
 	// RSA-specific tests
 	t.Run("RSA", func(t *testing.T) {
 		TestRSAKeypairs(t, ctx)
 	})
-	
+
 	// ECDSA-specific tests
 	t.Run("ECDSA", func(t *testing.T) {
 		TestECDSAKeypairs(t, ctx)
 	})
-	
+
 	// ED25519-specific tests
 	t.Run("ED25519", func(t *testing.T) {
 		TestED25519Keypairs(t, ctx)
@@ -73,13 +73,13 @@ func RunKeypairTests(t *testing.T, ctx *TestContext) {
 
 // TestKeypairGeneration tests basic keypair generation for all supported types
 func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	// Test RSA key generation
 	for _, keySize := range ctx.Config.SupportedRSAKeySizes {
 		t.Run("RSA_"+string(rune(keySize)), func(t *testing.T) {
-			keyPair, err := client.GenerateRSAKeyPair(keySize)
+			keyPair, err := token.GenerateRSAKeyPair(keySize)
 			if err != nil {
 				t.Fatalf("Failed to generate RSA %d key pair: %v", keySize, err)
 			}
@@ -103,7 +103,7 @@ func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
 	for _, curveName := range ctx.Config.SupportedECDSACurves {
 		if curve, ok := curves[curveName]; ok {
 			t.Run("ECDSA_"+curveName, func(t *testing.T) {
-				keyPair, err := client.GenerateECDSAKeyPair(curve)
+				keyPair, err := token.GenerateECDSAKeyPair(curve)
 				if err != nil {
 					t.Fatalf("Failed to generate ECDSA %s key pair: %v", curveName, err)
 				}
@@ -119,7 +119,7 @@ func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
 
 	// Test ED25519 key generation
 	t.Run("ED25519", func(t *testing.T) {
-		keyPair, err := client.GenerateED25519KeyPair()
+		keyPair, err := token.GenerateED25519KeyPair()
 		if err != nil {
 			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
 		}
@@ -137,12 +137,12 @@ func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
 
 // TestKeypairString tests string representation of keypairs
 func TestKeypairString(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
-		keyPair, err := client.GenerateRSAKeyPair(keySize)
+		keyPair, err := token.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -169,8 +169,8 @@ func TestKeypairString(t *testing.T, ctx *TestContext) {
 		if len(ctx.Config.SupportedECDSACurves) == 0 {
 			t.Skip("No ECDSA curves supported")
 		}
-		
-		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
+
+		keyPair, err := token.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
 		}
@@ -182,7 +182,7 @@ func TestKeypairString(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("ED25519KeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateED25519KeyPair()
+		keyPair, err := token.GenerateED25519KeyPair()
 		if err != nil {
 			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
 		}
@@ -196,12 +196,12 @@ func TestKeypairString(t *testing.T, ctx *TestContext) {
 
 // TestKeypairPublic tests public key extraction from keypairs
 func TestKeypairPublic(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
-		keyPair, err := client.GenerateRSAKeyPair(keySize)
+		keyPair, err := token.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -221,8 +221,8 @@ func TestKeypairPublic(t *testing.T, ctx *TestContext) {
 		if len(ctx.Config.SupportedECDSACurves) == 0 {
 			t.Skip("No ECDSA curves supported")
 		}
-		
-		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
+
+		keyPair, err := token.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
 		}
@@ -238,7 +238,7 @@ func TestKeypairPublic(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("ED25519KeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateED25519KeyPair()
+		keyPair, err := token.GenerateED25519KeyPair()
 		if err != nil {
 			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
 		}
@@ -256,12 +256,12 @@ func TestKeypairPublic(t *testing.T, ctx *TestContext) {
 
 // TestKeypairAsSigner tests crypto.Signer interface implementation
 func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
-		keyPair, err := client.GenerateRSAKeyPair(keySize)
+		keyPair, err := token.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -287,8 +287,8 @@ func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
 		if len(ctx.Config.SupportedECDSACurves) == 0 {
 			t.Skip("No ECDSA curves supported")
 		}
-		
-		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
+
+		keyPair, err := token.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
 		}
@@ -311,7 +311,7 @@ func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("ED25519KeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateED25519KeyPair()
+		keyPair, err := token.GenerateED25519KeyPair()
 		if err != nil {
 			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
 		}
@@ -347,12 +347,12 @@ func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
 
 // TestKeypairAsDecrypter tests crypto.Decrypter interface implementation
 func TestKeypairAsDecrypter(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
-		keyPair, err := client.GenerateRSAKeyPair(keySize)
+		keyPair, err := token.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -370,8 +370,8 @@ func TestKeypairAsDecrypter(t *testing.T, ctx *TestContext) {
 		if len(ctx.Config.SupportedECDSACurves) == 0 {
 			t.Skip("No ECDSA curves supported")
 		}
-		
-		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
+
+		keyPair, err := token.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
 		}
@@ -386,7 +386,7 @@ func TestKeypairAsDecrypter(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("ED25519KeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateED25519KeyPair()
+		keyPair, err := token.GenerateED25519KeyPair()
 		if err != nil {
 			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
 		}
@@ -440,11 +440,11 @@ func TestKeypairEdgeCases(t *testing.T, ctx *TestContext) {
 
 // TestKeypairIDHexEncoding tests hex encoding of keypair IDs
 func TestKeypairIDHexEncoding(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	keySize := ctx.Config.SupportedRSAKeySizes[0]
-	keyPair, err := client.GenerateRSAKeyPair(keySize)
+	keyPair, err := token.GenerateRSAKeyPair(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate RSA key pair: %v", err)
 	}
@@ -484,11 +484,11 @@ func TestKeypairConcurrentAccess(t *testing.T, ctx *TestContext) {
 		t.Skip("Concurrency tests disabled in configuration")
 	}
 
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	keySize := ctx.Config.SupportedRSAKeySizes[0]
-	keyPair, err := client.GenerateRSAKeyPair(keySize)
+	keyPair, err := token.GenerateRSAKeyPair(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate RSA key pair: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestKeypairConcurrentAccess(t *testing.T, ctx *TestContext) {
 	if numGoroutines <= 0 {
 		numGoroutines = 10
 	}
-	
+
 	done := make(chan bool, numGoroutines)
 
 	for range numGoroutines {
@@ -521,12 +521,12 @@ func TestKeypairConcurrentAccess(t *testing.T, ctx *TestContext) {
 
 // TestKeypairFieldValidation tests that keypair fields are properly populated
 func TestKeypairFieldValidation(t *testing.T, ctx *TestContext) {
-	client, cleanup := ctx.CreateTestClient(t)
+	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPairFields", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
-		keyPair, err := client.GenerateRSAKeyPair(keySize)
+		keyPair, err := token.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -562,8 +562,8 @@ func TestKeypairFieldValidation(t *testing.T, ctx *TestContext) {
 		if len(ctx.Config.SupportedECDSACurves) == 0 {
 			t.Skip("No ECDSA curves supported")
 		}
-		
-		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P384())
+
+		keyPair, err := token.GenerateECDSAKeyPair(elliptic.P384())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
 		}
@@ -586,7 +586,7 @@ func TestKeypairFieldValidation(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("ED25519KeyPairFields", func(t *testing.T) {
-		keyPair, err := client.GenerateED25519KeyPair()
+		keyPair, err := token.GenerateED25519KeyPair()
 		if err != nil {
 			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
 		}

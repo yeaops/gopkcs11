@@ -48,8 +48,8 @@ func TestNewSoftHSM(t *testing.T) {
 	defer token.Close()
 }
 
-// TestSoftHSMClientFunctionality runs comprehensive client tests using the e2e framework
-func TestSoftHSMClientFunctionality(t *testing.T) {
+// TestSoftHSMTokenFunctionality runs comprehensive token tests using the e2e framework
+func TestSoftHSMTokenFunctionality(t *testing.T) {
 	hsm, err := NewTestSoftHSM()
 	if err != nil {
 		t.Fatalf("Failed to create SoftHSM instance: %v", err)
@@ -57,7 +57,7 @@ func TestSoftHSMClientFunctionality(t *testing.T) {
 	defer hsm.Cleanup()
 
 	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
-	e2e.RunClientTests(t, ctx)
+	e2e.RunTokenTests(t, ctx)
 }
 
 // TestSoftHSMKeypairFunctionality runs comprehensive keypair tests using the e2e framework
@@ -120,14 +120,14 @@ func TestSoftHSMTokenInitialization(t *testing.T) {
 	defer hsm.Cleanup()
 
 	t.Run("StandardInitialization", func(t *testing.T) {
-		client, err := hsm.CreateToken("test-token-1", "12345678", "87654321")
+		token, err := hsm.CreateToken("test-token-1", "12345678", "87654321")
 		if err != nil {
 			t.Fatalf("Failed to create token: %v", err)
 		}
-		defer client.Close()
+		defer token.Close()
 
-		if !client.IsConnected() {
-			t.Error("Client should be connected after token creation")
+		if !token.IsConnected() {
+			t.Error("Token should be connected after token creation")
 		}
 	})
 
@@ -141,15 +141,15 @@ func TestSoftHSMIntegration(t *testing.T) {
 	}
 	defer hsm.Cleanup()
 
-	client, err := hsm.CreateToken("integration-test", "12345678", "87654321")
+	token, err := hsm.CreateToken("integration-test", "12345678", "87654321")
 	if err != nil {
 		t.Fatalf("Failed to create token: %v", err)
 	}
-	defer client.Close()
+	defer token.Close()
 
 	t.Run("RSAKeypairOperations", func(t *testing.T) {
 		// Generate RSA keypair
-		keyPair, err := client.GenerateRSAKeyPair(2048)
+		keyPair, err := token.GenerateRSAKeyPair(2048)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA keypair: %v", err)
 		}
@@ -175,7 +175,7 @@ func TestSoftHSMIntegration(t *testing.T) {
 
 	t.Run("AESSymmetricOperations", func(t *testing.T) {
 		// Generate AES key
-		aesKey, err := client.GenerateAESKey(256)
+		aesKey, err := token.GenerateAESKey(256)
 		if err != nil {
 			t.Fatalf("Failed to generate AES key: %v", err)
 		}

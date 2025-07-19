@@ -9,7 +9,7 @@ import (
 // HSMTestSuite defines the interface that HSM-specific implementations must satisfy
 // to run the common e2e test suite.
 type HSMTestSuite interface {
-	NewToken(t testing.TB) (*gopkcs11.Client, func())
+	NewToken(t testing.TB) (*gopkcs11.Token, func())
 	Cleanup() error
 }
 
@@ -63,8 +63,8 @@ func NewTestContext(hsm HSMTestSuite, config *CommonTestConfig) *TestContext {
 	}
 }
 
-// CreateTestClient is a convenience method that creates a test client using the HSM suite
-func (ctx *TestContext) CreateTestClient(t testing.TB) (*gopkcs11.Client, func()) {
+// CreateTestToken is a convenience method that creates a test token using the HSM suite
+func (ctx *TestContext) CreateTestToken(t testing.TB) (*gopkcs11.Token, func()) {
 	t.Helper()
 	return ctx.HSM.NewToken(t)
 }

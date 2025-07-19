@@ -37,7 +37,7 @@ func (e *ECDSAKeyPair) Public() crypto.PublicKey {
 // The digest parameter should be the already-hashed data.
 // ECDSA signatures are converted to DER format for compatibility with Go's crypto interfaces.
 func (e *ECDSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	session, err := e.client.GetSession()
+	session, err := e.token.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -51,11 +51,11 @@ func (e *ECDSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpt
 		return nil, errors.Errorf("digest length mismatch: expected %d, got %d", expectedDigestLen, len(digest))
 	}
 
-	if err := e.client.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
+	if err := e.token.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	signature, err := e.client.ctx.Sign(session, digest)
+	signature, err := e.token.ctx.Sign(session, digest)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}

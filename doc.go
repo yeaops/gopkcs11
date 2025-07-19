@@ -11,7 +11,7 @@
 //
 // The library is organized around several key components:
 //
-// **Client**: The main entry point that manages the PKCS#11 context, session, and
+// **Token**: The main entry point that manages the PKCS#11 context, session, and
 // authentication. It handles connection to HSM devices and provides methods for
 // key generation, import, and management.
 //
@@ -65,7 +65,7 @@
 //
 // # Basic Usage
 //
-// **Creating a Client**:
+// **Creating a Token**:
 //
 //	config := &gopkcs11.Config{
 //	    LibraryPath: "/usr/lib/softhsm/libsofthsm2.so",
@@ -73,28 +73,28 @@
 //	    UserPIN:     "userpin",
 //	}
 //
-//	client, err := gopkcs11.NewClient(config)
+//	token, err := gopkcs11.NewToken(config)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-//	defer client.Close()
+//	defer token.Close()
 //
 // **Key Generation**:
 //
 //	// Generate RSA key pair
-//	rsaKey, err := client.GenerateRSAKeyPair(2048)
+//	rsaKey, err := token.GenerateRSAKeyPair(2048)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
 //	// Generate ECDSA key pair
-//	ecdsaKey, err := client.GenerateECDSAKeyPair(elliptic.P256())
+//	ecdsaKey, err := token.GenerateECDSAKeyPair(elliptic.P256())
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
 //	// Generate ED25519 key pair
-//	ed25519Key, err := client.GenerateED25519KeyPair()
+//	ed25519Key, err := token.GenerateED25519KeyPair()
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -108,14 +108,14 @@
 //	signature, err := signer.Sign(rand.Reader, hash[:], crypto.SHA256)
 //
 //	// Using RSA-specific methods
-//	rsaSigner, _ := rsaKey.AsRSAKeyPair(client)
+//	rsaSigner, _ := rsaKey.AsRSAKeyPair(token)
 //	signature, err := rsaSigner.SignPKCS1v15(crypto.SHA256, hash[:])
 //	pssSignature, err := rsaSigner.SignPSS(crypto.SHA256, hash[:])
 //
 // **Symmetric Encryption**:
 //
 //	// Generate AES key
-//	aesKey, err := client.GenerateAESKey(256)
+//	aesKey, err := token.GenerateAESKey(256)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -156,8 +156,8 @@
 // # Thread Safety
 //
 // The library is designed to be thread-safe with proper synchronization:
-//   - Client sessions are protected with read-write mutexes
-//   - Multiple goroutines can safely use the same client
+//   - Token sessions are protected with read-write mutexes
+//   - Multiple goroutines can safely use the same token
 //   - Key operations are atomic and properly synchronized
 //
 // # Security Features

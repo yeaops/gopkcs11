@@ -144,7 +144,7 @@ func (t *TestSoftHSM) Cleanup() error {
 // However, after initialization, the slot id become dynamic.
 // Therefore, to locate a specific token slot, you must find it either by
 // its token label or by slot index (new-slot-count - 2).
-func (t *TestSoftHSM) CreateToken(tokenLabel, soPin, userPin string) (*gopkcs11.Client, error) {
+func (t *TestSoftHSM) CreateToken(tokenLabel, soPin, userPin string) (*gopkcs11.Token, error) {
 	fmt.Println(os.Getenv("SOFTHSM2_CONF"))
 
 	err := t.initializeSoftHSMToken(0, tokenLabel, soPin, userPin)
@@ -159,7 +159,7 @@ func (t *TestSoftHSM) CreateToken(tokenLabel, soPin, userPin string) (*gopkcs11.
 	}
 
 	slotIndex := slotCount - 2
-	return gopkcs11.NewClient(&gopkcs11.Config{
+	return gopkcs11.NewToken(&gopkcs11.Config{
 		LibraryPath: t.libraryPath,
 		SlotIndex:   &slotIndex,
 		UserPIN:     userPin,
@@ -167,21 +167,21 @@ func (t *TestSoftHSM) CreateToken(tokenLabel, soPin, userPin string) (*gopkcs11.
 }
 
 // NewToken implements the HSMTestSuite interface for running e2e tests
-func (t *TestSoftHSM) NewToken(tb testing.TB) (*gopkcs11.Client, func()) {
+func (t *TestSoftHSM) NewToken(tb testing.TB) (*gopkcs11.Token, func()) {
 	tb.Helper()
 	
-	client, err := t.CreateToken(defaultLabel, defaultSOPIN, defaultUserPIN)
+	token, err := t.CreateToken(defaultLabel, defaultSOPIN, defaultUserPIN)
 	if err != nil {
 		tb.Fatalf("Failed to create SoftHSM token: %v", err)
 	}
 	
 	cleanup := func() {
-		if client != nil {
-			client.Close()
+		if token != nil {
+			token.Close()
 		}
 	}
 	
-	return client, cleanup
+	return token, cleanup
 }
 
 func (t *TestSoftHSM) getSlotCount() (uint, error) {

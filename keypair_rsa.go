@@ -51,7 +51,7 @@ func (r *RSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 // Supports PKCS#1 v1.5 and OAEP padding schemes based on the opts parameter.
 // If opts is nil, PKCS#1 v1.5 padding is used by default.
 func (r *RSAKeyPair) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) ([]byte, error) {
-	session, err := r.client.GetSession()
+	session, err := r.token.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -61,11 +61,11 @@ func (r *RSAKeyPair) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.Decr
 		return nil, err
 	}
 
-	if err := r.client.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
+	if err := r.token.ctx.DecryptInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	plaintext, err := r.client.ctx.Decrypt(session, ciphertext)
+	plaintext, err := r.token.ctx.Decrypt(session, ciphertext)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -151,7 +151,7 @@ func (r *RSAKeyPair) signPKCS1v15(digest []byte, hash crypto.Hash) ([]byte, erro
 		return nil, err
 	}
 
-	session, err := r.client.GetSession()
+	session, err := r.token.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -159,11 +159,11 @@ func (r *RSAKeyPair) signPKCS1v15(digest []byte, hash crypto.Hash) ([]byte, erro
 	// Use CKM_RSA_PKCS with DigestInfo
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)
 
-	if err := r.client.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
+	if err := r.token.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	signature, err := r.client.ctx.Sign(session, digestInfo)
+	signature, err := r.token.ctx.Sign(session, digestInfo)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -214,7 +214,7 @@ func (r *RSAKeyPair) signPSS(digest []byte, opts *rsa.PSSOptions) ([]byte, error
 		saltLen = opts.SaltLength
 	}
 
-	session, err := r.client.GetSession()
+	session, err := r.token.GetSession()
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -224,11 +224,11 @@ func (r *RSAKeyPair) signPSS(digest []byte, opts *rsa.PSSOptions) ([]byte, error
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_PSS, pssParams)
 
-	if err := r.client.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
+	if err := r.token.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	signature, err := r.client.ctx.Sign(session, digest)
+	signature, err := r.token.ctx.Sign(session, digest)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}

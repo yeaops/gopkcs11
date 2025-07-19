@@ -30,7 +30,7 @@ const (
 // KeyPair represents an asymmetric key pair stored in the PKCS#11 device.
 // It contains both the handle to the private key in the HSM and the public key material.
 type KeyPair struct {
-	client *Client
+	token *Token
 
 	// Handle is the PKCS#11 object handle for the private key
 	Handle pkcs11.ObjectHandle
@@ -99,7 +99,7 @@ const (
 // SymmetricKey represents a symmetric encryption key stored in the PKCS#11 HSM.
 // It can be used for encryption, decryption, key wrapping, and key unwrapping operations.
 type SymmetricKey struct {
-	client *Client
+	token *Token
 
 	// Handle is the PKCS#11 object handle for the symmetric key
 	Handle pkcs11.ObjectHandle
