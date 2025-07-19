@@ -60,7 +60,7 @@ func (c *Client) GenerateRSAKeyPair(keySize int, attrs ...*Attribute) (*KeyPair,
 		pkcs11.CKA_EXTRACTABLE: false,
 	}
 
-	pubHandle, privHandle, err := c.ctx.GenerateKeyPair(session,
+	_, privHandle, err := c.ctx.GenerateKeyPair(session,
 		[]*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil)},
 		attributeMap2Slice(mergeAttribute(defaultPublicKeyTemplateMap, attrs)),
 		attributeMap2Slice(mergeAttribute(defaultPrivateKeyTemplateMap, attrs)),
@@ -69,22 +69,7 @@ func (c *Client) GenerateRSAKeyPair(keySize int, attrs ...*Attribute) (*KeyPair,
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	publicKey, err := c.extractRSAPublicKey(pubHandle)
-	if err != nil {
-		return nil, err
-	}
-
-	return &KeyPair{
-		client: c,
-
-		Handle:       privHandle,
-		PublicHandle: pubHandle,
-		Label:        label,
-		ID:           keyID,
-		KeyType:      KeyPairTypeRSA,
-		KeySize:      keySize,
-		PublicKey:    publicKey,
-	}, nil
+	return c.getKeyPair(privHandle)
 }
 
 // GenerateECDSAKeyPair generates a new ECDSA key pair in the PKCS#11 device.
@@ -92,15 +77,12 @@ func (c *Client) GenerateRSAKeyPair(keySize int, attrs ...*Attribute) (*KeyPair,
 // The generated keys are marked as non-extractable and sensitive for security.
 func (c *Client) GenerateECDSAKeyPair(curve elliptic.Curve, attrs ...*Attribute) (*KeyPair, error) {
 	var curveOID []byte
-	var keySize int
 
 	switch curve {
 	case elliptic.P256():
 		curveOID = []byte{0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07}
-		keySize = 256
 	case elliptic.P384():
 		curveOID = []byte{0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x22}
-		keySize = 384
 	default:
 		return nil, NewPKCS11Error(ErrUnknown, "unsupported elliptic curve", nil)
 	}
@@ -144,7 +126,7 @@ func (c *Client) GenerateECDSAKeyPair(curve elliptic.Curve, attrs ...*Attribute)
 		pkcs11.CKA_EXTRACTABLE: false,
 	}
 
-	pubHandle, privHandle, err := c.ctx.GenerateKeyPair(session,
+	_, privHandle, err := c.ctx.GenerateKeyPair(session,
 		[]*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil)},
 		attributeMap2Slice(mergeAttribute(defaultPublicKeyTemplateMap, attrs)),
 		attributeMap2Slice(mergeAttribute(defaultPrivateKeyTemplateMap, attrs)),
@@ -153,22 +135,7 @@ func (c *Client) GenerateECDSAKeyPair(curve elliptic.Curve, attrs ...*Attribute)
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	publicKey, err := c.extractECDSAPublicKey(pubHandle)
-	if err != nil {
-		return nil, err
-	}
-
-	return &KeyPair{
-		client: c,
-
-		Handle:       privHandle,
-		PublicHandle: pubHandle,
-		Label:        label,
-		ID:           keyID,
-		KeyType:      KeyPairTypeECDSA,
-		KeySize:      keySize,
-		PublicKey:    publicKey,
-	}, nil
+	return c.getKeyPair(privHandle)
 }
 
 // GenerateED25519KeyPair generates a new ED25519 key pair in the PKCS#11 device.
@@ -218,7 +185,7 @@ func (c *Client) GenerateED25519KeyPair(attrs ...*Attribute) (*KeyPair, error) {
 		pkcs11.CKA_EXTRACTABLE: false,
 	}
 
-	pubHandle, privHandle, err := c.ctx.GenerateKeyPair(session,
+	_, privHandle, err := c.ctx.GenerateKeyPair(session,
 		[]*pkcs11.Mechanism{pkcs11.NewMechanism(CKM_EC_EDWARDS_KEY_PAIR_GEN, nil)},
 		attributeMap2Slice(mergeAttribute(defaultPublicKeyTemplateMap, attrs)),
 		attributeMap2Slice(mergeAttribute(defaultPrivateKeyTemplateMap, attrs)),
@@ -227,22 +194,7 @@ func (c *Client) GenerateED25519KeyPair(attrs ...*Attribute) (*KeyPair, error) {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	publicKey, err := c.extractED25519PublicKey(pubHandle)
-	if err != nil {
-		return nil, err
-	}
-
-	return &KeyPair{
-		client: c,
-
-		Handle:       privHandle,
-		PublicHandle: pubHandle,
-		Label:        label,
-		ID:           keyID,
-		KeyType:      KeyPairTypeED25519,
-		KeySize:      255, // ED25519 uses 255-bit keys
-		PublicKey:    publicKey,
-	}, nil
+	return c.getKeyPair(privHandle)
 }
 
 // GetKeyPair searches for a key pair by its unique ID.
@@ -344,27 +296,12 @@ func (c *Client) ImportRSAKeyPair(privateKey *rsa.PrivateKey, attrs ...*Attribut
 	}
 	publicKeyTemplate := attributeMap2Slice(mergeAttribute(defaultPublicKeyTemplateMap, attrs))
 
-	pubHandle, err := c.ctx.CreateObject(session, publicKeyTemplate)
+	_, err = c.ctx.CreateObject(session, publicKeyTemplate)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	publicKey, err := c.extractRSAPublicKey(pubHandle)
-	if err != nil {
-		return nil, err
-	}
-
-	return &KeyPair{
-		client: c,
-
-		Handle:       privHandle,
-		PublicHandle: pubHandle,
-		Label:        label,
-		ID:           keyID,
-		KeyType:      KeyPairTypeRSA,
-		KeySize:      privateKey.Size() * 8,
-		PublicKey:    publicKey,
-	}, nil
+	return c.getKeyPair(privHandle)
 }
 
 // ImportECDSAKeyPair imports an existing ECDSA private key into the PKCS#11 device.
@@ -456,27 +393,12 @@ func (c *Client) ImportECDSAKeyPair(privateKey *ecdsa.PrivateKey, attrs ...*Attr
 		pkcs11.CKA_EC_POINT:  ecPointWrapped,
 	}
 	publicKeyTemplate := attributeMap2Slice(mergeAttribute(defaultPublicKeyTemplateMap, attrs))
-	pubHandle, err := c.ctx.CreateObject(session, publicKeyTemplate)
+	_, err = c.ctx.CreateObject(session, publicKeyTemplate)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	publicKey, err := c.extractECDSAPublicKey(pubHandle)
-	if err != nil {
-		return nil, err
-	}
-
-	return &KeyPair{
-		client: c,
-
-		Handle:       privHandle,
-		PublicHandle: pubHandle,
-		Label:        label,
-		ID:           keyID,
-		KeyType:      KeyPairTypeECDSA,
-		KeySize:      keySize,
-		PublicKey:    publicKey,
-	}, nil
+	return c.getKeyPair(privHandle)
 }
 
 // ImportED25519KeyPair imports an existing ED25519 private key into the PKCS#11 device.
@@ -550,27 +472,12 @@ func (c *Client) ImportED25519KeyPair(privateKey ed25519.PrivateKey, attrs ...*A
 	}
 	publicKeyTemplate := attributeMap2Slice(mergeAttribute(defaultPublicKeyTemplateMap, attrs))
 
-	pubHandle, err := c.ctx.CreateObject(session, publicKeyTemplate)
+	_, err = c.ctx.CreateObject(session, publicKeyTemplate)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	publicKey, err := c.extractED25519PublicKey(pubHandle)
-	if err != nil {
-		return nil, err
-	}
-
-	return &KeyPair{
-		client: c,
-
-		Handle:       privHandle,
-		PublicHandle: pubHandle,
-		Label:        label,
-		ID:           keyID,
-		KeyType:      KeyPairTypeED25519,
-		KeySize:      255, // ED25519 uses 255-bit keys
-		PublicKey:    publicKey,
-	}, nil
+	return c.getKeyPair(privHandle)
 }
 
 // ImportKeyPair imports a private key into the PKCS#11 device.

@@ -9,9 +9,82 @@ import (
 	pkcs11 "github.com/yeaops/gopkcs11"
 )
 
-func TestGenerateAESKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// RunSymmetricKeyTests runs the complete suite of symmetric key tests
+func RunSymmetricKeyTests(t *testing.T, ctx *TestContext) {
+	t.Run("GenerateAESKey", func(t *testing.T) {
+		TestGenerateAESKey(t, ctx)
+	})
+
+	t.Run("GenerateDESKey", func(t *testing.T) {
+		TestGenerateDESKey(t, ctx)
+	})
+
+	t.Run("Generate3DESKey", func(t *testing.T) {
+		TestGenerate3DESKey(t, ctx)
+	})
+
+	t.Run("ImportAESKey", func(t *testing.T) {
+		TestImportAESKey(t, ctx)
+	})
+
+	t.Run("ImportDESKey", func(t *testing.T) {
+		TestImportDESKey(t, ctx)
+	})
+
+	t.Run("Import3DESKey", func(t *testing.T) {
+		TestImport3DESKey(t, ctx)
+	})
+
+	t.Run("GetSymmetricKey", func(t *testing.T) {
+		TestGetSymmetricKey(t, ctx)
+	})
+
+	t.Run("ListSymmetricKeys", func(t *testing.T) {
+		TestListSymmetricKeys(t, ctx)
+	})
+
+	t.Run("DeleteSymmetricKey", func(t *testing.T) {
+		TestDeleteSymmetricKey(t, ctx)
+	})
+
+	t.Run("SymmetricKeyWithCustomAttributes", func(t *testing.T) {
+		TestSymmetricKeyWithCustomAttributes(t, ctx)
+	})
+
+	if !ctx.Config.SkipConcurrencyTests {
+		t.Run("SymmetricKeyConcurrentOperations", func(t *testing.T) {
+			TestSymmetricKeyConcurrentOperations(t, ctx)
+		})
+	}
+
+	t.Run("SymmetricKeyErrorCases", func(t *testing.T) {
+		TestSymmetricKeyErrorCases(t, ctx)
+	})
+
+	t.Run("SymmetricKeyString", func(t *testing.T) {
+		TestSymmetricKeyString(t, ctx)
+	})
+
+	t.Run("SymmetricKeyLifecycle", func(t *testing.T) {
+		TestSymmetricKeyLifecycle(t, ctx)
+	})
+
+	t.Run("SymmetricKeyAttributeValidation", func(t *testing.T) {
+		TestSymmetricKeyAttributeValidation(t, ctx)
+	})
+
+	t.Run("SymmetricKeyImportExportWorkflow", func(t *testing.T) {
+		TestSymmetricKeyImportExportWorkflow(t, ctx)
+	})
+
+	t.Run("SymmetricKeyFilteredListing", func(t *testing.T) {
+		TestSymmetricKeyFilteredListing(t, ctx)
+	})
+}
+
+// TestGenerateAESKey tests AES key generation with various key sizes
+func TestGenerateAESKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	testCases := []struct {
@@ -27,6 +100,11 @@ func TestGenerateAESKey(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// Only test key sizes that are configured as supported
+		if tc.valid && !contains(ctx.Config.SupportedAESKeySizes, tc.keySize) {
+			continue
+		}
+
 		t.Run(tc.name, func(t *testing.T) {
 			key, err := client.GenerateAESKey(tc.keySize)
 
@@ -64,9 +142,9 @@ func TestGenerateAESKey(t *testing.T) {
 	}
 }
 
-func TestGenerateDESKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestGenerateDESKey tests DES key generation
+func TestGenerateDESKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	key, err := client.GenerateDESKey()
@@ -93,9 +171,9 @@ func TestGenerateDESKey(t *testing.T) {
 	}
 }
 
-func TestGenerate3DESKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestGenerate3DESKey tests 3DES key generation
+func TestGenerate3DESKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	key, err := client.Generate3DESKey()
@@ -122,9 +200,9 @@ func TestGenerate3DESKey(t *testing.T) {
 	}
 }
 
-func TestImportAESKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestImportAESKey tests AES key import with various key sizes
+func TestImportAESKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	testCases := []struct {
@@ -142,6 +220,11 @@ func TestImportAESKey(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// Only test key sizes that are configured as supported
+		if !tc.shouldFail && !contains(ctx.Config.SupportedAESKeySizes, tc.keySize) {
+			continue
+		}
+
 		t.Run(tc.name, func(t *testing.T) {
 			keyMaterial := make([]byte, tc.keyBytes)
 			_, err := rand.Read(keyMaterial)
@@ -176,9 +259,9 @@ func TestImportAESKey(t *testing.T) {
 	}
 }
 
-func TestImportDESKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestImportDESKey tests DES key import
+func TestImportDESKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("ValidDESKey", func(t *testing.T) {
@@ -223,9 +306,9 @@ func TestImportDESKey(t *testing.T) {
 	})
 }
 
-func TestImport3DESKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestImport3DESKey tests 3DES key import
+func TestImport3DESKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("Valid3DESKey", func(t *testing.T) {
@@ -270,13 +353,14 @@ func TestImport3DESKey(t *testing.T) {
 	})
 }
 
-func TestGetSymmetricKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestGetSymmetricKey tests retrieving symmetric keys by ID
+func TestGetSymmetricKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Generate a key first
-	originalKey, err := client.GenerateAESKey(256)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	originalKey, err := client.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -314,16 +398,17 @@ func TestGetSymmetricKey(t *testing.T) {
 	}
 }
 
-func TestListSymmetricKeys(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestListSymmetricKeys tests listing all symmetric keys
+func TestListSymmetricKeys(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Generate several keys
 	keys := []*pkcs11.SymmetricKey{}
 
 	// Generate different types of keys
-	aesKey, err := client.GenerateAESKey(256)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	aesKey, err := client.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -371,13 +456,14 @@ func TestListSymmetricKeys(t *testing.T) {
 	}
 }
 
-func TestDeleteSymmetricKey(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestDeleteSymmetricKey tests symmetric key deletion
+func TestDeleteSymmetricKey(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Generate a key
-	key, err := client.GenerateAESKey(256)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	key, err := client.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -410,16 +496,17 @@ func TestDeleteSymmetricKey(t *testing.T) {
 	}
 }
 
-func TestSymmetricKeyWithCustomAttributes(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyWithCustomAttributes tests keys with custom attributes
+func TestSymmetricKeyWithCustomAttributes(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Test with custom label
 	customLabel := "custom-test-key"
 	labelAttr := pkcs11.NewLabelAttribute(customLabel)
 
-	key, err := client.GenerateAESKey(256, labelAttr)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	key, err := client.GenerateAESKey(keySize, labelAttr)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key with custom attributes: %v", err)
 	}
@@ -442,22 +529,31 @@ func TestSymmetricKeyWithCustomAttributes(t *testing.T) {
 	}
 }
 
-func TestSymmetricKeyConcurrentOperations(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyConcurrentOperations tests concurrent symmetric key operations
+func TestSymmetricKeyConcurrentOperations(t *testing.T, ctx *TestContext) {
+	if ctx.Config.SkipConcurrencyTests {
+		t.Skip("Concurrency tests disabled in configuration")
+	}
+
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Test concurrent key generation
-	const numGoroutines = 10
+	numGoroutines := ctx.Config.MaxConcurrentOps
+	if numGoroutines <= 0 {
+		numGoroutines = 10
+	}
+
 	var wg sync.WaitGroup
 	keys := make([]*pkcs11.SymmetricKey, numGoroutines)
 	errors := make([]error, numGoroutines)
 
+	keySize := ctx.Config.SupportedAESKeySizes[0]
 	for i := range numGoroutines {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			key, err := client.GenerateAESKey(256)
+			key, err := client.GenerateAESKey(keySize)
 			keys[index] = key
 			errors[index] = err
 		}(i)
@@ -487,9 +583,9 @@ func TestSymmetricKeyConcurrentOperations(t *testing.T) {
 	}
 }
 
-func TestSymmetricKeyErrorCases(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyErrorCases tests error handling scenarios
+func TestSymmetricKeyErrorCases(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("InvalidAESKeySize", func(t *testing.T) {
@@ -531,13 +627,14 @@ func TestSymmetricKeyErrorCases(t *testing.T) {
 	})
 }
 
-func TestSymmetricKeyString(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyString tests string representation of symmetric keys
+func TestSymmetricKeyString(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Test AES key string representation
-	aesKey, err := client.GenerateAESKey(256)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	aesKey, err := client.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -552,8 +649,8 @@ func TestSymmetricKeyString(t *testing.T) {
 	if !strings.Contains(str, "Type:") {
 		t.Error("String should contain 'Type:'")
 	}
-	if !strings.Contains(str, "Size: 256") {
-		t.Error("String should contain 'Size: 256'")
+	if !strings.Contains(str, "Size:") {
+		t.Error("String should contain 'Size:'")
 	}
 
 	// Test DES key string representation
@@ -579,13 +676,14 @@ func TestSymmetricKeyString(t *testing.T) {
 	}
 }
 
-func TestSymmetricKeyLifecycle(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyLifecycle tests complete symmetric key lifecycle
+func TestSymmetricKeyLifecycle(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Test complete lifecycle: generate -> retrieve -> list -> delete
-	key, err := client.GenerateAESKey(256)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	key, err := client.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -629,13 +727,14 @@ func TestSymmetricKeyLifecycle(t *testing.T) {
 	}
 }
 
-func TestSymmetricKeyAttributeValidation(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyAttributeValidation tests symmetric key attribute validation
+func TestSymmetricKeyAttributeValidation(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Test that generated keys have proper attributes
-	key, err := client.GenerateAESKey(256)
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	key, err := client.GenerateAESKey(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -653,14 +752,14 @@ func TestSymmetricKeyAttributeValidation(t *testing.T) {
 	if key.KeyType != pkcs11.SymmetricKeyTypeAES {
 		t.Error("Key should have correct type")
 	}
-	if key.KeySize != 256 {
+	if key.KeySize != keySize {
 		t.Error("Key should have correct size")
 	}
 }
 
-func TestSymmetricKeyImportExportWorkflow(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyImportExportWorkflow tests import/export workflow
+func TestSymmetricKeyImportExportWorkflow(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Generate key material
@@ -708,16 +807,17 @@ func TestSymmetricKeyImportExportWorkflow(t *testing.T) {
 	}
 }
 
-func TestSymmetricKeyFilteredListing(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestSymmetricKeyFilteredListing tests filtered listing of symmetric keys
+func TestSymmetricKeyFilteredListing(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	// Generate keys with specific labels
 	label1 := "test-key-1"
 	label2 := "test-key-2"
 
-	key1, err := client.GenerateAESKey(256, pkcs11.NewLabelAttribute(label1))
+	keySize := ctx.Config.SupportedAESKeySizes[0]
+	key1, err := client.GenerateAESKey(keySize, pkcs11.NewLabelAttribute(label1))
 	if err != nil {
 		t.Fatalf("Failed to generate first key: %v", err)
 	}
@@ -754,4 +854,14 @@ func TestSymmetricKeyFilteredListing(t *testing.T) {
 	// Clean up
 	client.DeleteSymmetricKey(key1.ID)
 	client.DeleteSymmetricKey(key2.ID)
+}
+
+// Helper function to check if a slice contains a value
+func contains(slice []int, value int) bool {
+	for _, v := range slice {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }

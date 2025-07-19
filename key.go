@@ -20,7 +20,7 @@ type KeyPairType int
 
 const (
 	// KeyPairTypeRSA represents RSA key pairs for signing and encryption
-	KeyPairTypeRSA KeyPairType = iota
+	KeyPairTypeRSA KeyPairType = iota + 1
 	// KeyPairTypeECDSA represents ECDSA key pairs for signing
 	KeyPairTypeECDSA
 	// KeyPairTypeED25519 represents ED25519 key pairs for signing
@@ -89,7 +89,7 @@ type SymmetricKeyType int
 
 const (
 	// SymmetricKeyTypeAES represents AES symmetric keys (128, 192, 256 bits)
-	SymmetricKeyTypeAES SymmetricKeyType = iota
+	SymmetricKeyTypeAES SymmetricKeyType = iota + 1
 	// SymmetricKeyTypeDES represents DES symmetric keys (64 bits)
 	SymmetricKeyTypeDES
 	// SymmetricKeyType3DES represents 3DES symmetric keys (192 bits)

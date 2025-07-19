@@ -51,15 +51,7 @@ func (c *Client) GenerateAESKey(keySize int, attrs ...*Attribute) (*SymmetricKey
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return &SymmetricKey{
-		client: c,
-
-		Handle:  handle,
-		Label:   label,
-		ID:      keyID,
-		KeyType: SymmetricKeyTypeAES,
-		KeySize: keySize,
-	}, nil
+	return c.getSymmetricKey(handle)
 }
 
 // GenerateDESKey generates a new DES symmetric key (64 bits) in the PKCS#11 device.
@@ -100,15 +92,7 @@ func (c *Client) GenerateDESKey(attrs ...*Attribute) (*SymmetricKey, error) {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return &SymmetricKey{
-		client: c,
-
-		Handle:  handle,
-		Label:   label,
-		ID:      keyID,
-		KeyType: SymmetricKeyTypeDES,
-		KeySize: 64, // DES is always 64 bits
-	}, nil
+	return c.getSymmetricKey(handle)
 }
 
 // Generate3DESKey generates a new 3DES symmetric key (192 bits) in the PKCS#11 device.
@@ -149,15 +133,7 @@ func (c *Client) Generate3DESKey(attrs ...*Attribute) (*SymmetricKey, error) {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return &SymmetricKey{
-		client: c,
-
-		Handle:  handle,
-		Label:   label,
-		ID:      keyID,
-		KeyType: SymmetricKeyType3DES,
-		KeySize: 192, // 3DES is 192 bits (3 * 64)
-	}, nil
+	return c.getSymmetricKey(handle)
 }
 
 // ImportAESKey imports existing AES key material into the PKCS#11 device.
@@ -172,8 +148,6 @@ func (c *Client) ImportAESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmetr
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
-
-	keySize := len(keyMaterial) * 8
 
 	// default attributes
 	newId := xid.New()
@@ -206,15 +180,7 @@ func (c *Client) ImportAESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmetr
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return &SymmetricKey{
-		client: c,
-
-		Handle:  handle,
-		Label:   label,
-		ID:      keyID,
-		KeyType: SymmetricKeyTypeAES,
-		KeySize: keySize,
-	}, nil
+	return c.getSymmetricKey(handle)
 }
 
 // ImportDESKey imports existing DES key material into the PKCS#11 device.
@@ -316,15 +282,7 @@ func (c *Client) Import3DESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmet
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return &SymmetricKey{
-		client: c,
-
-		Handle:  handle,
-		Label:   label,
-		ID:      keyID,
-		KeyType: SymmetricKeyType3DES,
-		KeySize: 192,
-	}, nil
+	return c.getSymmetricKey(handle)
 }
 
 func (c *Client) GetSymmetricKey(keyID []byte) (*SymmetricKey, error) {
@@ -441,7 +399,6 @@ func (c *Client) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, err
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
-		pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, nil),
 	}
 
 	attrs, err := c.ctx.GetAttributeValue(session, handle, attrsQuery)
@@ -452,7 +409,6 @@ func (c *Client) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, err
 	label := string(attrs[0].Value)
 	id := attrs[1].Value
 	keyTypeValue := attrs[2].Value
-	valueLenBytes := attrs[3].Value
 
 	if len(keyTypeValue) == 0 {
 		return nil, NewPKCS11Error(ErrUnknown, "unable to determine key type", nil)
@@ -465,6 +421,17 @@ func (c *Client) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, err
 	switch pkcs11KeyType {
 	case pkcs11.CKK_AES:
 		keyType = SymmetricKeyTypeAES
+
+		attrsQuery := []*Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, nil),
+		}
+
+		attrs, err := c.ctx.GetAttributeValue(session, handle, attrsQuery)
+		if err != nil {
+			return nil, ConvertPKCS11Error(err)
+		}
+		valueLenBytes := attrs[0].Value
+
 		if len(valueLenBytes) >= 4 {
 			// Convert bytes to int (assuming little-endian)
 			keySize = int(valueLenBytes[0]) | int(valueLenBytes[1])<<8 | int(valueLenBytes[2])<<16 | int(valueLenBytes[3])<<24

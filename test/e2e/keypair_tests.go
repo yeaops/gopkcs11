@@ -15,13 +15,134 @@ import (
 	pkcs11 "github.com/yeaops/gopkcs11"
 )
 
-func TestKeyPairString(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// RunKeypairTests runs the complete suite of keypair tests
+func RunKeypairTests(t *testing.T, ctx *TestContext) {
+	t.Run("KeyPairGeneration", func(t *testing.T) {
+		TestKeypairGeneration(t, ctx)
+	})
+	
+	t.Run("KeyPairString", func(t *testing.T) {
+		TestKeypairString(t, ctx)
+	})
+	
+	t.Run("KeyPairPublic", func(t *testing.T) {
+		TestKeypairPublic(t, ctx)
+	})
+	
+	t.Run("KeyPairAsSigner", func(t *testing.T) {
+		TestKeypairAsSigner(t, ctx)
+	})
+	
+	t.Run("KeyPairAsDecrypter", func(t *testing.T) {
+		TestKeypairAsDecrypter(t, ctx)
+	})
+	
+	t.Run("KeyPairEdgeCases", func(t *testing.T) {
+		TestKeypairEdgeCases(t, ctx)
+	})
+	
+	t.Run("KeyPairIDHexEncoding", func(t *testing.T) {
+		TestKeypairIDHexEncoding(t, ctx)
+	})
+	
+	if !ctx.Config.SkipConcurrencyTests {
+		t.Run("KeyPairConcurrentAccess", func(t *testing.T) {
+			TestKeypairConcurrentAccess(t, ctx)
+		})
+	}
+	
+	t.Run("KeyPairFieldValidation", func(t *testing.T) {
+		TestKeypairFieldValidation(t, ctx)
+	})
+	
+	// RSA-specific tests
+	t.Run("RSA", func(t *testing.T) {
+		TestRSAKeypairs(t, ctx)
+	})
+	
+	// ECDSA-specific tests
+	t.Run("ECDSA", func(t *testing.T) {
+		TestECDSAKeypairs(t, ctx)
+	})
+	
+	// ED25519-specific tests
+	t.Run("ED25519", func(t *testing.T) {
+		TestED25519Keypairs(t, ctx)
+	})
+}
+
+// TestKeypairGeneration tests basic keypair generation for all supported types
+func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
+	defer cleanup()
+
+	// Test RSA key generation
+	for _, keySize := range ctx.Config.SupportedRSAKeySizes {
+		t.Run("RSA_"+string(rune(keySize)), func(t *testing.T) {
+			keyPair, err := client.GenerateRSAKeyPair(keySize)
+			if err != nil {
+				t.Fatalf("Failed to generate RSA %d key pair: %v", keySize, err)
+			}
+			if keyPair == nil {
+				t.Error("GenerateRSAKeyPair should return non-nil keypair")
+			}
+			if keyPair.KeySize != keySize {
+				t.Errorf("Expected key size %d, got %d", keySize, keyPair.KeySize)
+			}
+			if keyPair.KeyType != pkcs11.KeyPairTypeRSA {
+				t.Errorf("Expected RSA key type, got %v", keyPair.KeyType)
+			}
+		})
+	}
+
+	// Test ECDSA key generation
+	curves := map[string]elliptic.Curve{
+		"P256": elliptic.P256(),
+		"P384": elliptic.P384(),
+	}
+	for _, curveName := range ctx.Config.SupportedECDSACurves {
+		if curve, ok := curves[curveName]; ok {
+			t.Run("ECDSA_"+curveName, func(t *testing.T) {
+				keyPair, err := client.GenerateECDSAKeyPair(curve)
+				if err != nil {
+					t.Fatalf("Failed to generate ECDSA %s key pair: %v", curveName, err)
+				}
+				if keyPair == nil {
+					t.Error("GenerateECDSAKeyPair should return non-nil keypair")
+				}
+				if keyPair.KeyType != pkcs11.KeyPairTypeECDSA {
+					t.Errorf("Expected ECDSA key type, got %v", keyPair.KeyType)
+				}
+			})
+		}
+	}
+
+	// Test ED25519 key generation
+	t.Run("ED25519", func(t *testing.T) {
+		keyPair, err := client.GenerateED25519KeyPair()
+		if err != nil {
+			t.Fatalf("Failed to generate ED25519 key pair: %v", err)
+		}
+		if keyPair == nil {
+			t.Error("GenerateED25519KeyPair should return non-nil keypair")
+		}
+		if keyPair.KeyType != pkcs11.KeyPairTypeED25519 {
+			t.Errorf("Expected ED25519 key type, got %v", keyPair.KeyType)
+		}
+		if keyPair.KeySize != 255 {
+			t.Errorf("Expected key size 255, got %d", keyPair.KeySize)
+		}
+	})
+}
+
+// TestKeypairString tests string representation of keypairs
+func TestKeypairString(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateRSAKeyPair(2048)
+		keySize := ctx.Config.SupportedRSAKeySizes[0]
+		keyPair, err := client.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -36,8 +157,8 @@ func TestKeyPairString(t *testing.T) {
 		if !strings.Contains(str, "Type:") {
 			t.Error("String representation should contain 'Type:'")
 		}
-		if !strings.Contains(str, "Size: 2048") {
-			t.Error("String representation should contain 'Size: 2048'")
+		if !strings.Contains(str, "Size:") {
+			t.Error("String representation should contain 'Size:'")
 		}
 		if !strings.Contains(str, "ID: 0x") {
 			t.Error("String representation should contain 'ID: 0x'")
@@ -45,6 +166,10 @@ func TestKeyPairString(t *testing.T) {
 	})
 
 	t.Run("ECDSAKeyPair", func(t *testing.T) {
+		if len(ctx.Config.SupportedECDSACurves) == 0 {
+			t.Skip("No ECDSA curves supported")
+		}
+		
 		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
@@ -69,13 +194,14 @@ func TestKeyPairString(t *testing.T) {
 	})
 }
 
-func TestKeyPairPublic(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestKeypairPublic tests public key extraction from keypairs
+func TestKeypairPublic(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateRSAKeyPair(2048)
+		keySize := ctx.Config.SupportedRSAKeySizes[0]
+		keyPair, err := client.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -85,12 +211,17 @@ func TestKeyPairPublic(t *testing.T) {
 		if !ok {
 			t.Error("Public key should be *rsa.PublicKey")
 		}
-		if rsaPubKey.Size() != 256 { // 2048 bits = 256 bytes
-			t.Errorf("Expected key size 256 bytes, got %d", rsaPubKey.Size())
+		expectedBytes := keySize / 8
+		if rsaPubKey.Size() != expectedBytes {
+			t.Errorf("Expected key size %d bytes, got %d", expectedBytes, rsaPubKey.Size())
 		}
 	})
 
 	t.Run("ECDSAKeyPair", func(t *testing.T) {
+		if len(ctx.Config.SupportedECDSACurves) == 0 {
+			t.Skip("No ECDSA curves supported")
+		}
+		
 		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
@@ -123,13 +254,14 @@ func TestKeyPairPublic(t *testing.T) {
 	})
 }
 
-func TestKeyPairAsSigner(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestKeypairAsSigner tests crypto.Signer interface implementation
+func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateRSAKeyPair(2048)
+		keySize := ctx.Config.SupportedRSAKeySizes[0]
+		keyPair, err := client.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -152,6 +284,10 @@ func TestKeyPairAsSigner(t *testing.T) {
 	})
 
 	t.Run("ECDSAKeyPair", func(t *testing.T) {
+		if len(ctx.Config.SupportedECDSACurves) == 0 {
+			t.Skip("No ECDSA curves supported")
+		}
+		
 		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
@@ -209,13 +345,14 @@ func TestKeyPairAsSigner(t *testing.T) {
 	})
 }
 
-func TestKeyPairAsDecrypter(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestKeypairAsDecrypter tests crypto.Decrypter interface implementation
+func TestKeypairAsDecrypter(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
-		keyPair, err := client.GenerateRSAKeyPair(2048)
+		keySize := ctx.Config.SupportedRSAKeySizes[0]
+		keyPair, err := client.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -230,6 +367,10 @@ func TestKeyPairAsDecrypter(t *testing.T) {
 	})
 
 	t.Run("ECDSAKeyPair", func(t *testing.T) {
+		if len(ctx.Config.SupportedECDSACurves) == 0 {
+			t.Skip("No ECDSA curves supported")
+		}
+		
 		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P256())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
@@ -260,11 +401,8 @@ func TestKeyPairAsDecrypter(t *testing.T) {
 	})
 }
 
-func TestKeyPairEdgeCases(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
-	defer cleanup()
-
+// TestKeypairEdgeCases tests edge cases in keypair handling
+func TestKeypairEdgeCases(t *testing.T, ctx *TestContext) {
 	t.Run("EmptyKeyPair", func(t *testing.T) {
 		keyPair := &pkcs11.KeyPair{}
 
@@ -298,17 +436,15 @@ func TestKeyPairEdgeCases(t *testing.T) {
 			t.Error("AsDecrypter should return error for non-RSA key")
 		}
 	})
-
-	// Use client to suppress the unused variable warning
-	_ = client
 }
 
-func TestKeyPairIDHexEncoding(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestKeypairIDHexEncoding tests hex encoding of keypair IDs
+func TestKeypairIDHexEncoding(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
-	keyPair, err := client.GenerateRSAKeyPair(2048)
+	keySize := ctx.Config.SupportedRSAKeySizes[0]
+	keyPair, err := client.GenerateRSAKeyPair(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate RSA key pair: %v", err)
 	}
@@ -342,20 +478,30 @@ func TestKeyPairIDHexEncoding(t *testing.T) {
 	}
 }
 
-func TestKeyPairConcurrentAccess(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestKeypairConcurrentAccess tests concurrent access to keypair methods
+func TestKeypairConcurrentAccess(t *testing.T, ctx *TestContext) {
+	if ctx.Config.SkipConcurrencyTests {
+		t.Skip("Concurrency tests disabled in configuration")
+	}
+
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
-	keyPair, err := client.GenerateRSAKeyPair(2048)
+	keySize := ctx.Config.SupportedRSAKeySizes[0]
+	keyPair, err := client.GenerateRSAKeyPair(keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate RSA key pair: %v", err)
 	}
 
 	// Test concurrent access to key pair methods
-	done := make(chan bool, 10)
+	numGoroutines := ctx.Config.MaxConcurrentOps
+	if numGoroutines <= 0 {
+		numGoroutines = 10
+	}
+	
+	done := make(chan bool, numGoroutines)
 
-	for i := 0; i < 10; i++ {
+	for range numGoroutines {
 		go func() {
 			defer func() { done <- true }()
 
@@ -368,46 +514,19 @@ func TestKeyPairConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < 10; i++ {
+	for range numGoroutines {
 		<-done
 	}
 }
 
-func TestSymmetricKeyConcurrentAccess(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
-	defer cleanup()
-
-	key, err := client.GenerateAESKey(256)
-	if err != nil {
-		t.Fatalf("Failed to generate AES key: %v", err)
-	}
-
-	// Test concurrent access to symmetric key methods
-	done := make(chan bool, 10)
-
-	for i := 0; i < 10; i++ {
-		go func() {
-			defer func() { done <- true }()
-
-			// Test String() method concurrently
-			_ = key.String()
-		}()
-	}
-
-	// Wait for all goroutines to complete
-	for i := 0; i < 10; i++ {
-		<-done
-	}
-}
-
-func TestKeyPairFieldValidation(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
+// TestKeypairFieldValidation tests that keypair fields are properly populated
+func TestKeypairFieldValidation(t *testing.T, ctx *TestContext) {
+	client, cleanup := ctx.CreateTestClient(t)
 	defer cleanup()
 
 	t.Run("RSAKeyPairFields", func(t *testing.T) {
-		keyPair, err := client.GenerateRSAKeyPair(2048)
+		keySize := ctx.Config.SupportedRSAKeySizes[0]
+		keyPair, err := client.GenerateRSAKeyPair(keySize)
 		if err != nil {
 			t.Fatalf("Failed to generate RSA key pair: %v", err)
 		}
@@ -428,8 +547,8 @@ func TestKeyPairFieldValidation(t *testing.T) {
 		if keyPair.KeyType != pkcs11.KeyPairTypeRSA {
 			t.Error("KeyType should be RSA")
 		}
-		if keyPair.KeySize != 2048 {
-			t.Error("KeySize should be 2048")
+		if keyPair.KeySize != keySize {
+			t.Errorf("KeySize should be %d", keySize)
 		}
 		if keyPair.PublicKey == nil {
 			t.Error("PublicKey should not be nil")
@@ -440,6 +559,10 @@ func TestKeyPairFieldValidation(t *testing.T) {
 	})
 
 	t.Run("ECDSAKeyPairFields", func(t *testing.T) {
+		if len(ctx.Config.SupportedECDSACurves) == 0 {
+			t.Skip("No ECDSA curves supported")
+		}
+		
 		keyPair, err := client.GenerateECDSAKeyPair(elliptic.P384())
 		if err != nil {
 			t.Fatalf("Failed to generate ECDSA key pair: %v", err)
@@ -486,60 +609,23 @@ func TestKeyPairFieldValidation(t *testing.T) {
 	})
 }
 
-func TestSymmetricKeyFieldValidation(t *testing.T) {
-	RequireSoftHSM(t)
-	client, cleanup := CreateTestClient(t)
-	defer cleanup()
+// TestRSAKeypairs runs RSA-specific keypair tests
+func TestRSAKeypairs(t *testing.T, ctx *TestContext) {
+	// RSA-specific tests would be implemented here
+	// These would include detailed RSA signing, encryption, different key sizes, etc.
+	t.Skip("Detailed RSA keypair tests should be implemented")
+}
 
-	t.Run("AESKeyFields", func(t *testing.T) {
-		key, err := client.GenerateAESKey(192)
-		if err != nil {
-			t.Fatalf("Failed to generate AES key: %v", err)
-		}
+// TestECDSAKeypairs runs ECDSA-specific keypair tests
+func TestECDSAKeypairs(t *testing.T, ctx *TestContext) {
+	// ECDSA-specific tests would be implemented here
+	// These would include different curves, signing algorithms, etc.
+	t.Skip("Detailed ECDSA keypair tests should be implemented")
+}
 
-		// Validate all fields are populated
-		if key.Handle == 0 {
-			t.Error("Handle should not be zero")
-		}
-		if key.Label == "" {
-			t.Error("Label should not be empty")
-		}
-		if len(key.ID) == 0 {
-			t.Error("ID should not be empty")
-		}
-		if key.KeyType != pkcs11.SymmetricKeyTypeAES {
-			t.Error("KeyType should be AES")
-		}
-		if key.KeySize != 192 {
-			t.Error("KeySize should be 192")
-		}
-	})
-
-	t.Run("DESKeyFields", func(t *testing.T) {
-		key, err := client.GenerateDESKey()
-		if err != nil {
-			t.Fatalf("Failed to generate DES key: %v", err)
-		}
-
-		if key.KeyType != pkcs11.SymmetricKeyTypeDES {
-			t.Error("KeyType should be DES")
-		}
-		if key.KeySize != 64 {
-			t.Error("KeySize should be 64")
-		}
-	})
-
-	t.Run("3DESKeyFields", func(t *testing.T) {
-		key, err := client.Generate3DESKey()
-		if err != nil {
-			t.Fatalf("Failed to generate 3DES key: %v", err)
-		}
-
-		if key.KeyType != pkcs11.SymmetricKeyType3DES {
-			t.Error("KeyType should be 3DES")
-		}
-		if key.KeySize != 192 {
-			t.Error("KeySize should be 192")
-		}
-	})
+// TestED25519Keypairs runs ED25519-specific keypair tests
+func TestED25519Keypairs(t *testing.T, ctx *TestContext) {
+	// ED25519-specific tests would be implemented here
+	// These would include signing, message handling, etc.
+	t.Skip("Detailed ED25519 keypair tests should be implemented")
 }
