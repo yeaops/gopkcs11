@@ -125,10 +125,6 @@ func TestSoftHSMTokenInitialization(t *testing.T) {
 			t.Fatalf("Failed to create token: %v", err)
 		}
 		defer token.Close()
-
-		if !token.IsConnected() {
-			t.Error("Token should be connected after token creation")
-		}
 	})
 
 }

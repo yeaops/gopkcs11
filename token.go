@@ -207,14 +207,6 @@ func (t *Token) GetContext() *pkcs11.Ctx {
 	return t.ctx
 }
 
-// IsConnected returns true if the token is currently logged in to the PKCS#11 device.
-// This method is thread-safe.
-func (t *Token) IsConnected() bool {
-	t.sessionMu.RLock()
-	defer t.sessionMu.RUnlock()
-	return t.loggedIn
-}
-
 // Ping tests the connection to the PKCS#11 device by performing a simple session info query.
 // It returns an error if the device is not accessible or the session is invalid.
 func (t *Token) Ping(ctx context.Context) error {

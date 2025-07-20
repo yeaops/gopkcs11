@@ -83,11 +83,6 @@ func TestNewToken(t *testing.T, ctx *TestContext) {
 		if token == nil {
 			t.Error("NewToken should return non-nil token")
 		}
-
-		// Test that token is connected
-		if !token.IsConnected() {
-			t.Error("Token should be connected after creation")
-		}
 	})
 
 	t.Run("InvalidLibraryPath", func(t *testing.T) {
@@ -181,20 +176,6 @@ func TestTokenSessionManagement(t *testing.T, ctx *TestContext) {
 
 // TestTokenConnectionState tests connection state management
 func TestTokenConnectionState(t *testing.T, ctx *TestContext) {
-	t.Run("IsConnected", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
-
-		if !token.IsConnected() {
-			t.Error("Token should be connected after creation")
-		}
-
-		token.Close()
-
-		if token.IsConnected() {
-			t.Error("Token should not be connected after close")
-		}
-	})
 
 	t.Run("Ping", func(t *testing.T) {
 		token, cleanup := ctx.CreateTestToken(t)
@@ -230,10 +211,6 @@ func TestTokenClose(t *testing.T, ctx *TestContext) {
 		err := token.Close()
 		if err != nil {
 			t.Errorf("Close should not fail: %v", err)
-		}
-
-		if token.IsConnected() {
-			t.Error("Token should not be connected after close")
 		}
 	})
 
@@ -306,7 +283,6 @@ func TestTokenConcurrentAccess(t *testing.T, ctx *TestContext) {
 				return
 			}
 
-			_ = token.IsConnected()
 			_ = token.GetContext()
 
 			err = token.Ping(context.Background())
@@ -370,21 +346,12 @@ func TestTokenLifecycle(t *testing.T, ctx *TestContext) {
 			t.Errorf("Ping failed: %v", err)
 		}
 
-		// Check connection state
-		if !token.IsConnected() {
-			t.Error("Token should be connected")
-		}
-
 		// Close
 		err = token.Close()
 		if err != nil {
 			t.Errorf("Close failed: %v", err)
 		}
 
-		// Check connection state after close
-		if token.IsConnected() {
-			t.Error("Token should not be connected after close")
-		}
 	})
 }
 
