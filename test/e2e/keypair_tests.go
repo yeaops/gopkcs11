@@ -74,11 +74,8 @@ func RunKeypairTests(t *testing.T, ctx *TestContext) {
 
 // TestKeypairGeneration tests basic keypair generation for all supported types
 func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	// Test RSA key generation
 	for _, keySize := range ctx.Config.SupportedRSAKeySizes {
@@ -141,11 +138,8 @@ func TestKeypairGeneration(t *testing.T, ctx *TestContext) {
 
 // TestKeypairString tests string representation of keypairs
 func TestKeypairString(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
@@ -203,11 +197,8 @@ func TestKeypairString(t *testing.T, ctx *TestContext) {
 
 // TestKeypairPublic tests public key extraction from keypairs
 func TestKeypairPublic(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
@@ -266,12 +257,8 @@ func TestKeypairPublic(t *testing.T, ctx *TestContext) {
 
 // TestKeypairAsSigner tests crypto.Signer interface implementation
 func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
-
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
 		keyPair, err := token.GenerateRSAKeyPair(context.Background(), keySize)
@@ -360,11 +347,8 @@ func TestKeypairAsSigner(t *testing.T, ctx *TestContext) {
 
 // TestKeypairAsDecrypter tests crypto.Decrypter interface implementation
 func TestKeypairAsDecrypter(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	t.Run("RSAKeyPair", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
@@ -456,11 +440,8 @@ func TestKeypairEdgeCases(t *testing.T, ctx *TestContext) {
 
 // TestKeypairIDHexEncoding tests hex encoding of keypair IDs
 func TestKeypairIDHexEncoding(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	keySize := ctx.Config.SupportedRSAKeySizes[0]
 	keyPair, err := token.GenerateRSAKeyPair(context.Background(), keySize)
@@ -503,11 +484,8 @@ func TestKeypairConcurrentAccess(t *testing.T, ctx *TestContext) {
 		t.Skip("Concurrency tests disabled in configuration")
 	}
 
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	keySize := ctx.Config.SupportedRSAKeySizes[0]
 	keyPair, err := token.GenerateRSAKeyPair(context.Background(), keySize)
@@ -543,12 +521,8 @@ func TestKeypairConcurrentAccess(t *testing.T, ctx *TestContext) {
 
 // TestKeypairFieldValidation tests that keypair fields are properly populated
 func TestKeypairFieldValidation(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer func() {
-		token.Close()
-		cleanup()
-	}()
-
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 	t.Run("RSAKeyPairFields", func(t *testing.T) {
 		keySize := ctx.Config.SupportedRSAKeySizes[0]
 		keyPair, err := token.GenerateRSAKeyPair(context.Background(), keySize)

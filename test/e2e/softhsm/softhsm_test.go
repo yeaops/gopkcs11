@@ -1,6 +1,7 @@
 package softhsm
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/yeaops/gopkcs11/test/e2e"
@@ -29,109 +30,28 @@ func getSoftHSMTestConfig() *e2e.CommonTestConfig {
 }
 
 // TestNewSoftHSM tests basic SoftHSM setup functionality
-// func TestNewSoftHSM(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil || hsm == nil {
-// 		t.Fatalf("Failed to create SoftHSM instance, err: %s", err)
-// 	}
-// 	defer hsm.Cleanup()
+func TestNewSoftHSM(t *testing.T) {
+	hsm, err := NewTestSoftHSM()
+	if err != nil || hsm == nil {
+		t.Fatalf("Failed to create SoftHSM instance, err: %s", err)
+	}
+	defer hsm.Cleanup()
 
-// 	token, err := hsm.CreateToken("test_token", "12345678", "12345678")
-// 	if err != nil || token == nil {
-// 		t.Fatalf("Failed to create token, err: %s", err)
-// 	}
-// 	defer token.Close()
-// }
-
-// func TestP11SoftHSM(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil || hsm == nil {
-// 		t.Fatalf("Failed to create SoftHSM instance, err: %s", err)
-// 	}
-// 	defer hsm.Cleanup()
-
-// 	token, err := hsm.CreateToken("test_token", "12345678", "12345678")
-// 	if err != nil || token == nil {
-// 		t.Fatalf("Failed to create token, err: %s", err)
-// 	}
-// 	info, err := token.GetTokenInfo(t.Context())
-// 	if err != nil {
-// 		t.Fatalf("Failed to get token info, err: %s", err)
-// 	}
-// 	fmt.Println(info)
-
-// 	token.Close()
-
-// 	ctx := pkcs11.New(hsm.libraryPath)
-// 	if ctx == nil {
-// 		t.Fatal("Failed to create PKCS#11 context")
-// 	}
-// 	if err := ctx.Initialize(); err != nil {
-// 		if !gopkcs11.IsAlreadyInitializedError(gopkcs11.ConvertPKCS11Error(err)) {
-// 			t.Fatalf("Failed to initialize PKCS#11, err: %s", err)
-// 		}
-// 	}
-// 	defer ctx.Finalize()
-// 	defer ctx.Destroy()
-
-// 	// Create session on this context
-// 	p11Session, err := ctx.OpenSession(token.GetSlotID(), pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
-// 	if err != nil {
-// 		t.Fatalf("Failed to open session, err: %s", err)
-// 	}
-// 	defer ctx.CloseSession(p11Session)
-
-// 	if err := ctx.Login(p11Session, pkcs11.CKU_USER, "12345678"); err != nil {
-// 		ctx.CloseSession(p11Session)
-// 		t.Fatalf("Failed to login, err: %s", err)
-// 	}
-
-// 	// p11Session2, err := ctx.OpenSession(token.GetSlotID(), pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
-// 	// if err != nil {
-// 	// 	t.Fatalf("Failed to open session, err: %s", err)
-// 	// }
-
-// 	// if err := ctx.Login(p11Session2, pkcs11.CKU_USER, "12345678"); err != nil {
-// 	// 	ctx.CloseSession(p11Session2)
-// 	// 	t.Fatalf("Failed to login, err: %s", err)
-// 	// }
-
-// 	// ctx2
-
-// 	// ctx2 := pkcs11.New(hsm.libraryPath)
-// 	// if ctx2 == nil {
-// 	// 	t.Fatal("Failed to create PKCS#11 context")
-// 	// }
-// 	// if err := ctx2.Initialize(); err != nil {
-// 	// 	t.Fatalf("Failed to initialize PKCS#11, err: %s", err)
-// 	// }
-// 	// defer ctx2.Finalize()
-// 	// defer ctx2.Destroy()
-
-// 	// // Create session on this context
-// 	// p11Session2, err := ctx.OpenSession(token.GetSlotID(), pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
-// 	// if err != nil {
-// 	// 	t.Fatalf("Failed to open session, err: %s", err)
-// 	// }
-
-// 	// if err := ctx.Login(p11Session2, pkcs11.CKU_USER, "12345678"); err != nil {
-// 	// 	ctx.CloseSession(p11Session2)
-// 	// 	t.Fatalf("Failed to login, err: %s", err)
-// 	// }
-
-// }
+	token := hsm.CreateToken(t)
+	defer token.Close()
+}
 
 // TestSoftHSMTokenFunctionality runs comprehensive token tests using the e2e framework
-// func TestSoftHSMTokenFunctionality(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SoftHSM instance: %v", err)
-// 	}
-// 	defer hsm.Cleanup()
+func TestSoftHSMTokenFunctionality(t *testing.T) {
+	hsm, err := NewTestSoftHSM()
+	if err != nil {
+		t.Fatalf("Failed to create SoftHSM instance: %v", err)
+	}
+	defer hsm.Cleanup()
 
-// 	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
-// 	e2e.RunTokenTests(t, ctx)
-// }
+	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
+	e2e.RunTokenTests(t, ctx)
+}
 
 // TestSoftHSMKeypairFunctionality runs comprehensive keypair tests using the e2e framework
 func TestSoftHSMKeypairFunctionality(t *testing.T) {
@@ -146,137 +66,27 @@ func TestSoftHSMKeypairFunctionality(t *testing.T) {
 }
 
 // TestSoftHSMCipherFunctionality runs comprehensive cipher tests using the e2e framework
-// func TestSoftHSMCipherFunctionality(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SoftHSM instance: %v", err)
-// 	}
-// 	defer hsm.Cleanup()
+func TestSoftHSMCipherFunctionality(t *testing.T) {
+	hsm, err := NewTestSoftHSM()
+	if err != nil {
+		t.Fatalf("Failed to create SoftHSM instance: %v", err)
+	}
+	defer hsm.Cleanup()
 
-// 	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
-// 	e2e.RunCipherTests(t, ctx)
-// }
+	fmt.Printf("TestSoftHSMCipherFunctionality hsm: %v\n", hsm)
 
-// // TestSoftHSMSymmetricKeyFunctionality runs comprehensive symmetric key tests using the e2e framework
-// func TestSoftHSMSymmetricKeyFunctionality(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SoftHSM instance: %v", err)
-// 	}
-// 	defer hsm.Cleanup()
+	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
+	e2e.RunCipherTests(t, ctx)
+}
 
-// 	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
-// 	e2e.RunSymmetricKeyTests(t, ctx)
-// }
+// TestSoftHSMSymmetricKeyFunctionality runs comprehensive symmetric key tests using the e2e framework
+func TestSoftHSMSymmetricKeyFunctionality(t *testing.T) {
+	hsm, err := NewTestSoftHSM()
+	if err != nil {
+		t.Fatalf("Failed to create SoftHSM instance: %v", err)
+	}
+	defer hsm.Cleanup()
 
-// // TestSoftHSMLibraryDetection tests SoftHSM library path detection across platforms
-// func TestSoftHSMLibraryDetection(t *testing.T) {
-// 	// Test that we can detect SoftHSM library
-// 	libraryPath, err := getBundledSoftHSMPath()
-// 	if err != nil {
-// 		t.Skipf("SoftHSM library not found (this is expected in some environments): %v", err)
-// 	}
-
-// 	if libraryPath == "" {
-// 		t.Error("Library path should not be empty when no error is returned")
-// 	}
-
-// 	t.Logf("Detected SoftHSM library at: %s", libraryPath)
-// }
-
-// TestSoftHSMTokenInitialization tests various token initialization scenarios
-// func TestSoftHSMTokenInitialization(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SoftHSM instance: %v", err)
-// 	}
-// 	defer hsm.Cleanup()
-
-// 	t.Run("StandardInitialization", func(t *testing.T) {
-// 		token, err := hsm.CreateToken("test-token-1", "12345678", "87654321")
-// 		if err != nil {
-// 			t.Fatalf("Failed to create token: %v", err)
-// 		}
-// 		defer token.Close()
-// 	})
-
-// }
-
-// TestSoftHSMIntegration runs a comprehensive integration test combining multiple operations
-// func TestSoftHSMIntegration(t *testing.T) {
-// 	hsm, err := NewTestSoftHSM()
-// 	if err != nil {
-// 		t.Fatalf("Failed to create SoftHSM instance: %v", err)
-// 	}
-// 	defer hsm.Cleanup()
-
-// 	token, err := hsm.CreateToken("integration-test", "12345678", "87654321")
-// 	if err != nil {
-// 		t.Fatalf("Failed to create token: %v", err)
-// 	}
-// 	defer token.Close()
-
-// 	t.Run("RSAKeypairOperations", func(t *testing.T) {
-// 		// Generate RSA keypair
-// 		keyPair, err := token.GenerateRSAKeyPair(context.TODO(), 2048)
-// 		if err != nil {
-// 			t.Fatalf("Failed to generate RSA keypair: %v", err)
-// 		}
-
-// 		// Test signing
-// 		signer := keyPair.AsSigner()
-// 		if signer == nil {
-// 			t.Fatal("Failed to get signer from RSA keypair")
-// 		}
-
-// 		message := []byte("test message for integration")
-// 		// Use proper random source and hash for RSA signing
-// 		hash := sha256.Sum256(message)
-// 		signature, err := signer.Sign(rand.Reader, hash[:], crypto.SHA256)
-// 		if err != nil {
-// 			t.Fatalf("Failed to sign message: %v", err)
-// 		}
-
-// 		if len(signature) == 0 {
-// 			t.Error("Signature should not be empty")
-// 		}
-// 	})
-
-// 	t.Run("AESSymmetricOperations", func(t *testing.T) {
-// 		// Generate AES key
-// 		aesKey, err := token.GenerateAESKey(context.TODO(), 256)
-// 		if err != nil {
-// 			t.Fatalf("Failed to generate AES key: %v", err)
-// 		}
-
-// 		// Create cipher
-// 		cipher, err := gopkcs11.NewAESECBCipher(aesKey)
-// 		if err != nil {
-// 			t.Fatalf("Failed to create AES cipher: %v", err)
-// 		}
-
-// 		// Test encryption/decryption
-// 		plaintext := []byte("Hello SoftHSM Integration Test!")
-
-// 		// Pad to block size for ECB mode
-// 		blockSize := 16
-// 		padding := blockSize - (len(plaintext) % blockSize)
-// 		for i := 0; i < padding; i++ {
-// 			plaintext = append(plaintext, byte(padding))
-// 		}
-
-// 		encrypted, err := cipher.Encrypt(context.Background(), plaintext)
-// 		if err != nil {
-// 			t.Fatalf("Failed to encrypt: %v", err)
-// 		}
-
-// 		decrypted, err := cipher.Decrypt(context.Background(), encrypted)
-// 		if err != nil {
-// 			t.Fatalf("Failed to decrypt: %v", err)
-// 		}
-
-// 		if len(decrypted) != len(plaintext) {
-// 			t.Errorf("Decrypted length mismatch: expected %d, got %d", len(plaintext), len(decrypted))
-// 		}
-// 	})
-// }
+	ctx := e2e.NewTestContext(hsm, getSoftHSMTestConfig())
+	e2e.RunSymmetricKeyTests(t, ctx)
+}

@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,51 +13,28 @@ import (
 	"github.com/yeaops/gopkcs11"
 )
 
-const (
-	defaultUserPIN = "1234"
-	defaultSOPIN   = "5678"
-	defaultLabel   = "TestToken"
-)
-
 type TestSoftHSM struct {
 	libraryPath       string
 	tokenDir          string
 	softhsmConfigFile string
-
-	ctx *pkcs11.Ctx
-
-	cleanup func()
-
-	ru sync.Mutex
+	cleanup           func()
 }
 
 func NewTestSoftHSM() (*TestSoftHSM, error) {
-	hsm := &TestSoftHSM{}
+	hsm := TestSoftHSM{}
 
 	// Check environment variable first
 	if path := os.Getenv("PKCS11_LIBRARY_PATH"); path == "" {
 		os.Setenv("PKCS11_LIBRARY_PATH", "build/lib/softhsm/libsofthsm2.so")
-		err := hsm.setup()
-		if err != nil {
-			return nil, err
-		}
+	}
+	err := hsm.setup()
+	if err != nil {
+		return nil, err
 	}
 
 	// Set environment variable for SoftHSM config
 	oldConfig := os.Getenv("SOFTHSM2_CONF")
 	os.Setenv("SOFTHSM2_CONF", hsm.softhsmConfigFile)
-
-	// init ctx
-	// load SoftHSM library
-	p11Ctx := pkcs11.New(hsm.libraryPath)
-	if p11Ctx == nil {
-		return nil, fmt.Errorf("Could not load PKCS#11 library on getSlotCount")
-	}
-
-	if err := p11Ctx.Initialize(); err != nil {
-		return nil, fmt.Errorf("Could not initialize PKCS#11 library on getSlotCount: %w", err)
-	}
-	hsm.ctx = p11Ctx
 
 	cleanup := func() {
 		// Restore original config
@@ -73,14 +49,14 @@ func NewTestSoftHSM() (*TestSoftHSM, error) {
 	}
 	hsm.cleanup = cleanup
 
-	return hsm, nil
+	return &hsm, nil
 }
 
 // creates a temporary SoftHSM for testing
 func (hsm *TestSoftHSM) setup() error {
 
 	// Get the path to the bundled SoftHSM library
-	libraryPath, err := getBundledSoftHSMPath()
+	libraryPath, err := hsm.getBundledSoftHSMPath()
 	if err != nil {
 		return fmt.Errorf("failed to get SoftHSM library path: %w", err)
 	}
@@ -91,7 +67,6 @@ func (hsm *TestSoftHSM) setup() error {
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
-
 	// set the token directory
 	hsm.tokenDir = tempDir
 
@@ -114,8 +89,7 @@ slots.removable = false
 }
 
 // getBundledSoftHSMPath returns the path to the SoftHSM library
-
-func getBundledSoftHSMPath() (string, error) {
+func (hsm *TestSoftHSM) getBundledSoftHSMPath() (string, error) {
 	// Check environment variable first
 	if path := os.Getenv("PKCS11_LIBRARY_PATH"); path != "" {
 		if _, err := os.Stat(path); err == nil {
@@ -156,12 +130,6 @@ func getBundledSoftHSMPath() (string, error) {
 
 func (t *TestSoftHSM) Cleanup() error {
 	t.cleanup()
-
-	if t.ctx != nil {
-		t.ctx.Finalize()
-		t.ctx.Destroy()
-	}
-
 	return nil
 }
 
@@ -170,87 +138,101 @@ func (t *TestSoftHSM) Cleanup() error {
 // However, after initialization, the slot id become dynamic.
 // Therefore, to locate a specific token slot, you must find it either by
 // its token label or by slot index (new-slot-count - 2).
-func (t *TestSoftHSM) CreateToken(tokenLabel, soPin, userPin string) (*gopkcs11.Token, error) {
-	fmt.Println(os.Getenv("SOFTHSM2_CONF"))
+func (t *TestSoftHSM) CreateToken(tb testing.TB) *gopkcs11.Token {
+	tb.Helper()
 
-	err := t.initializeSoftHSMToken(0, tokenLabel, soPin, userPin)
-	// err := t.initializeSoftHSMTokenByUtil(0, tokenLabel, soPin, userPin)
-	if err != nil {
-		return nil, err
+	var tokenLabel, soPin, userPin string
+	tokenLabel = "test-token"
+	soPin = "12345678"
+	userPin = "12345678"
+
+	slotIndex, err := t.createToken(tokenLabel, soPin, userPin)
+	if err != nil || slotIndex == nil {
+		tb.Fatalf("could not create token: %v", err)
 	}
 
-	slotCount, err := t.getSlotCount()
+	token, err := gopkcs11.NewToken(&gopkcs11.Config{
+		LibraryPath: t.libraryPath,
+		SlotIndex:   slotIndex,
+		UserPIN:     userPin,
+	})
 	if err != nil {
-		return nil, err
+		tb.Fatalf("could not create token: %v", err)
+	}
+	return token
+}
+
+func (t *TestSoftHSM) createToken(tokenLabel, soPin, userPin string) (*uint, error) {
+
+	// init ctx
+	// load SoftHSM library
+	p11Ctx := pkcs11.New(t.libraryPath)
+	if p11Ctx == nil {
+		return nil, fmt.Errorf("could not create PKCS#11 context, path: %s", t.libraryPath)
+	}
+	defer p11Ctx.Destroy()
+
+	if err := p11Ctx.Initialize(); err != nil {
+		return nil, fmt.Errorf("could not initialize PKCS#11 library: %v", err)
+	}
+	defer p11Ctx.Finalize()
+
+	// fmt.Println(os.Getenv("SOFTHSM2_CONF"))
+	err := t.initializeSoftHSMToken(p11Ctx, tokenLabel, soPin, userPin)
+	// err := t.initializeSoftHSMTokenByUtil(p11Ctx, tokenLabel, soPin, userPin)
+	if err != nil {
+		return nil, fmt.Errorf("could not initialize SoftHSM token: %v", err)
+	}
+
+	slotCount, err := t.getSlotCount(p11Ctx)
+	if err != nil {
+
+		return nil, fmt.Errorf("could not get slot count: %v", err)
 	}
 
 	slotIndex := slotCount - 2
-	return gopkcs11.NewToken(&gopkcs11.Config{
-		LibraryPath: t.libraryPath,
-		SlotIndex:   &slotIndex,
-		UserPIN:     userPin,
-	})
+
+	return &slotIndex, nil
 }
 
-// NewToken implements the HSMTestSuite interface for running e2e tests
-func (t *TestSoftHSM) NewToken(tb testing.TB) (*gopkcs11.Token, func()) {
-	tb.Helper()
-
-	t.ru.Lock()
-	defer t.ru.Unlock()
-
-	token, err := t.CreateToken(defaultLabel, defaultSOPIN, defaultUserPIN)
-	if err != nil {
-		tb.Fatalf("Failed to create SoftHSM token: %v", err)
-	}
-
-	cleanup := func() {
-		if token != nil {
-			token.Close()
-		}
-	}
-
-	return token, cleanup
-}
-
-func (t *TestSoftHSM) getSlotCount() (uint, error) {
+func (t *TestSoftHSM) getSlotCount(ctx *pkcs11.Ctx) (uint, error) {
 	// load SoftHSM library
-	allSlots, err := t.ctx.GetSlotList(true)
+	allSlots, err := ctx.GetSlotList(true)
 	if err != nil {
-		return 0, fmt.Errorf("Could not get slot list: %v", err)
+		return 0, fmt.Errorf("could not get slot list: %v", err)
 	}
 
 	return uint(len(allSlots)), nil
 }
 
-func (t *TestSoftHSM) initializeSoftHSMToken(slotID uint, tokenLabel, soPin, userPin string) error {
-	slotCount, err := t.getSlotCount()
+func (t *TestSoftHSM) initializeSoftHSMToken(ctx *pkcs11.Ctx, tokenLabel, soPin, userPin string) error {
+	slotCount, err := t.getSlotCount(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Use the first available slot
-	slotID = slotCount - 1
+	slotID := slotCount - 1
 
-	err = t.ctx.InitToken(slotID, soPin, tokenLabel)
+	err = ctx.InitToken(slotID, soPin, tokenLabel)
 	if err != nil {
 		return fmt.Errorf("InitToken failed: %v", err)
 	}
 
 	// init user pin
-	sessionHandle, err := t.ctx.OpenSession(slotID, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
+	sessionHandle, err := ctx.OpenSession(slotID, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
 	if err != nil {
 		return fmt.Errorf("OpenSession failed: %v", err)
 	}
-	defer t.ctx.CloseSession(sessionHandle)
+	defer ctx.CloseSession(sessionHandle)
 
-	err = t.ctx.Login(sessionHandle, pkcs11.CKU_SO, soPin)
+	err = ctx.Login(sessionHandle, pkcs11.CKU_SO, soPin)
 	if err != nil {
 		return fmt.Errorf("SO login failed: %v", err)
 	}
-	defer t.ctx.Logout(sessionHandle)
+	defer ctx.Logout(sessionHandle)
 
-	err = t.ctx.InitPIN(sessionHandle, userPin)
+	err = ctx.InitPIN(sessionHandle, userPin)
 	if err != nil {
 		return fmt.Errorf("InitPIN failed: %v", err)
 	}
@@ -259,8 +241,8 @@ func (t *TestSoftHSM) initializeSoftHSMToken(slotID uint, tokenLabel, soPin, use
 }
 
 // initializeSoftHSMToken attempts to initialize a SoftHSM token using softhsm2-util
-func (t *TestSoftHSM) initializeSoftHSMTokenByUtil(slotId uint, tokenLabel, soPin, userPin string) error {
-	slotCount, err := t.getSlotCount()
+func (t *TestSoftHSM) initializeSoftHSMTokenByUtil(ctx *pkcs11.Ctx, tokenLabel, soPin, userPin string) error {
+	slotCount, err := t.getSlotCount(ctx)
 	if err != nil {
 		return err
 	}
@@ -272,7 +254,7 @@ func (t *TestSoftHSM) initializeSoftHSMTokenByUtil(slotId uint, tokenLabel, soPi
 	}
 
 	// Initialize token
-	slotId = slotCount - 1
+	slotId := slotCount - 1
 	cmd := exec.Command(utilPath,
 		"--init-token",
 		"--slot", fmt.Sprintf("%d", slotId),

@@ -53,8 +53,8 @@ func RunCipherTests(t *testing.T, ctx *TestContext) {
 
 // TestAESECBCipher tests AES-ECB cipher functionality
 func TestAESECBCipher(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	// Generate AES key with a supported size
 	keySize := ctx.Config.SupportedAESKeySizes[0]
@@ -94,8 +94,8 @@ func TestAESECBCipher(t *testing.T, ctx *TestContext) {
 
 // TestAESCBCCipher tests AES-CBC cipher functionality
 func TestAESCBCCipher(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	// Generate AES key with a supported size
 	keySize := ctx.Config.SupportedAESKeySizes[0]
@@ -153,8 +153,8 @@ func TestAESCBCCipher(t *testing.T, ctx *TestContext) {
 
 // TestAESGCMCipher tests AES-GCM cipher functionality
 func TestAESGCMCipher(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	// Generate AES key with a supported size
 	keySize := ctx.Config.SupportedAESKeySizes[0]
@@ -213,8 +213,8 @@ func TestAESGCMCipher(t *testing.T, ctx *TestContext) {
 
 // TestAESCipherProperties tests cipher properties and configuration
 func TestAESCipherProperties(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	// Test different key sizes
 	for _, keySize := range ctx.Config.SupportedAESKeySizes {
@@ -260,8 +260,8 @@ func TestAESCipherProperties(t *testing.T, ctx *TestContext) {
 
 // TestAESCipherErrorCases tests various error scenarios
 func TestAESCipherErrorCases(t *testing.T, ctx *TestContext) {
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	t.Run("NilKey", func(t *testing.T) {
 		_, err := pkcs11.NewAESECBCipher(nil)
@@ -332,8 +332,8 @@ func TestAESConcurrencyAndCancellation(t *testing.T, ctx *TestContext) {
 		t.Skip("Concurrency tests disabled in configuration")
 	}
 
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	keySize := ctx.Config.SupportedAESKeySizes[0]
 	key, err := token.GenerateAESKey(context.Background(), keySize)
@@ -356,8 +356,8 @@ func BenchmarkAESCipher(t *testing.T, ctx *TestContext) {
 		t.Skip("Performance tests disabled in configuration")
 	}
 
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	keySize := ctx.Config.SupportedAESKeySizes[0]
 	key, err := token.GenerateAESKey(context.Background(), keySize)

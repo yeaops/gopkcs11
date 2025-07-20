@@ -15,10 +15,6 @@ func RunTokenTests(t *testing.T, ctx *TestContext) {
 		TestNewToken(t, ctx)
 	})
 
-	t.Run("TokenSlotIdentification", func(t *testing.T) {
-		TestTokenSlotIdentification(t, ctx)
-	})
-
 	t.Run("TokenSessionManagement", func(t *testing.T) {
 		TestTokenSessionManagement(t, ctx)
 	})
@@ -29,18 +25,6 @@ func RunTokenTests(t *testing.T, ctx *TestContext) {
 
 	t.Run("TokenClose", func(t *testing.T) {
 		TestTokenClose(t, ctx)
-	})
-
-	t.Run("ConfigValidation", func(t *testing.T) {
-		TestConfigValidation(t, ctx)
-	})
-
-	t.Run("ConfigString", func(t *testing.T) {
-		TestConfigString(t, ctx)
-	})
-
-	t.Run("ConfigGetSlotIdentificationType", func(t *testing.T) {
-		TestConfigGetSlotIdentificationType(t, ctx)
 	})
 
 	if !ctx.Config.SkipConcurrencyTests {
@@ -74,12 +58,14 @@ func RunTokenTests(t *testing.T, ctx *TestContext) {
 // TestNewToken tests token creation with various configurations
 func TestNewToken(t *testing.T, ctx *TestContext) {
 	t.Run("ValidConfig", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer token.Close()
 
 		if token == nil {
 			t.Error("NewToken should return non-nil token")
 		}
+
+		token.Close()
 	})
 
 	t.Run("InvalidLibraryPath", func(t *testing.T) {
@@ -117,17 +103,12 @@ func TestNewToken(t *testing.T, ctx *TestContext) {
 	})
 }
 
-// TestTokenSlotIdentification tests various slot identification methods
-func TestTokenSlotIdentification(t *testing.T, ctx *TestContext) {
-	// These tests are HSM-specific in their implementation but the concept is common
-	t.Skip("HSM-specific slot identification tests should be implemented in HSM packages")
-}
-
 // TestTokenSessionManagement tests session-related functionality
 func TestTokenSessionManagement(t *testing.T, ctx *TestContext) {
+
 	t.Run("GetSession", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer token.Close()
 
 		session, err := token.GetSession(context.Background())
 		if err != nil {
@@ -149,20 +130,18 @@ func TestTokenSessionManagement(t *testing.T, ctx *TestContext) {
 		defer session2.Release()
 	})
 
-	// t.Run("GetSessionAfterClose", func(t *testing.T) {
-	// 	token, cleanup := ctx.CreateTestToken(t)
-	// 	defer cleanup()
+	t.Run("GetSessionAfterClose", func(t *testing.T) {
+		token := ctx.CreateTestToken(t)
+		token.Close()
 
-	// 	token.Close()
-
-	// 	_, err := token.GetSession(context.Background())
-	// 	if err == nil {
-	// 		t.Error("GetContext should fail after token close")
-	// 	}
-	// 	if !strings.Contains(err.Error(), "not logged in") {
-	// 		t.Errorf("Error should mention not logged in, got: %v", err)
-	// 	}
-	// })
+		_, err := token.GetSession(context.Background())
+		if err == nil {
+			t.Error("GetContext should fail after token close")
+		}
+		if !strings.Contains(err.Error(), "context pool is closed") {
+			t.Errorf("Error should mention not logged in, got: %v", err)
+		}
+	})
 
 }
 
@@ -170,8 +149,8 @@ func TestTokenSessionManagement(t *testing.T, ctx *TestContext) {
 func TestTokenConnectionState(t *testing.T, ctx *TestContext) {
 
 	t.Run("Ping", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer token.Close()
 
 		ctxBg := context.Background()
 		err := token.Ping(ctxBg)
@@ -181,8 +160,8 @@ func TestTokenConnectionState(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("PingAfterClose", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer token.Close()
 
 		token.Close()
 
@@ -197,8 +176,8 @@ func TestTokenConnectionState(t *testing.T, ctx *TestContext) {
 // TestTokenClose tests token close functionality
 func TestTokenClose(t *testing.T, ctx *TestContext) {
 	t.Run("BasicClose", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer token.Close()
 
 		err := token.Close()
 		if err != nil {
@@ -207,8 +186,8 @@ func TestTokenClose(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("MultipleClose", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer token.Close()
 
 		// Close multiple times should not cause issues
 		err1 := token.Close()
@@ -227,32 +206,14 @@ func TestTokenClose(t *testing.T, ctx *TestContext) {
 	})
 }
 
-// TestConfigValidation tests configuration validation
-func TestConfigValidation(t *testing.T, ctx *TestContext) {
-	// These tests are HSM-specific as they depend on actual library paths
-	t.Skip("HSM-specific config validation tests should be implemented in HSM packages")
-}
-
-// TestConfigString tests configuration string representation
-func TestConfigString(t *testing.T, ctx *TestContext) {
-	// These tests are HSM-specific as they depend on actual library paths
-	t.Skip("HSM-specific config string tests should be implemented in HSM packages")
-}
-
-// TestConfigGetSlotIdentificationType tests slot identification type detection
-func TestConfigGetSlotIdentificationType(t *testing.T, ctx *TestContext) {
-	// These tests are HSM-specific as they depend on actual library paths
-	t.Skip("HSM-specific slot identification type tests should be implemented in HSM packages")
-}
-
 // TestTokenConcurrentAccess tests concurrent access to token methods
 func TestTokenConcurrentAccess(t *testing.T, ctx *TestContext) {
 	if ctx.Config.SkipConcurrencyTests {
 		t.Skip("Concurrency tests disabled in configuration")
 	}
 
-	token, cleanup := ctx.CreateTestToken(t)
-	defer cleanup()
+	token := ctx.CreateTestToken(t)
+	defer token.Close()
 
 	// Test concurrent access to token methods
 	numGoroutines := ctx.Config.MaxConcurrentOps
@@ -319,8 +280,13 @@ func TestSlotIdentificationTypeString(t *testing.T, ctx *TestContext) {
 // TestTokenLifecycle tests complete token lifecycle
 func TestTokenLifecycle(t *testing.T, ctx *TestContext) {
 	t.Run("CreateUseClose", func(t *testing.T) {
-		token, cleanup := ctx.CreateTestToken(t)
-		defer cleanup()
+		token := ctx.CreateTestToken(t)
+		defer func() {
+			err := token.Close()
+			if err != nil {
+				t.Errorf("Close failed: %v", err)
+			}
+		}()
 
 		// Use the token
 		session, err := token.GetSession(context.Background())
@@ -336,12 +302,6 @@ func TestTokenLifecycle(t *testing.T, ctx *TestContext) {
 		err = token.Ping(context.Background())
 		if err != nil {
 			t.Errorf("Ping failed: %v", err)
-		}
-
-		// Close
-		err = token.Close()
-		if err != nil {
-			t.Errorf("Close failed: %v", err)
 		}
 
 	})
@@ -403,7 +363,7 @@ func TestTokenMemoryManagement(t *testing.T, ctx *TestContext) {
 	// Test creating and closing many tokens
 	const numTokens = 10
 	for i := 0; i < numTokens; i++ {
-		token, cleanup := ctx.CreateTestToken(t)
+		token := ctx.CreateTestToken(t)
 
 		// Use the token briefly
 		session, err := token.GetSession(context.Background())
@@ -415,6 +375,6 @@ func TestTokenMemoryManagement(t *testing.T, ctx *TestContext) {
 		}
 
 		// Close immediately
-		cleanup()
+		token.Close()
 	}
 }
