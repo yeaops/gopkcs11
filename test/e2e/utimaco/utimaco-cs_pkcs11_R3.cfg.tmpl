@@ -1,0 +1,32 @@
+[Global]
+Logpath = {{ .Global.Logpath }}
+Logging = {{ .Global.Logging }}
+Logsize = {{ .Global.Logsize }}
+SlotMultiSession = {{ .Global.SlotMultiSession }}
+SlotCount = {{ .Global.SlotCount }}
+KeepLeadZeros = {{ .Global.KeepLeadZeros }}
+FallbackInterval = {{ .Global.FallbackInterval }}
+KeepAlive = {{ .Global.KeepAlive }}
+ConnectionTimeout = {{ .Global.ConnectionTimeout }}
+CommandTimeout = {{ .Global.CommandTimeout }}
+KeysExternal = {{ .Global.KeysExternal }}
+
+[KeyStorage]
+{{- if .KeyStorage.KeyStorageType }}
+KeyStorageType = {{ .KeyStorage.KeyStorageType }}
+{{- end }}
+{{- if .KeyStorage.KeyStorageConfig }}
+KeyStorageConfig = {{ .KeyStorage.KeyStorageConfig }}
+{{- end }}
+{{- if .KeyStorage.KeyStorageReconnect }}
+KeyStorageReconnect = {{ .KeyStorage.KeyStorageReconnect }}
+{{- end }}
+
+[CryptoServer]
+{{- if .CryptoServer.Device }}
+Device = {{ .CryptoServer.Device }}
+{{- end }}
+
+#[Slot]
+# SlotNumber =
+
