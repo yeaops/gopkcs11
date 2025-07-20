@@ -1,6 +1,8 @@
 package gopkcs11
 
 import (
+	"context"
+
 	"github.com/miekg/pkcs11"
 	"github.com/pkg/errors"
 	"github.com/rs/xid"
@@ -9,15 +11,18 @@ import (
 // GenerateAESKey generates a new AES symmetric key in the PKCS#11 device.
 // Supported key sizes are 128, 192, and 256 bits.
 // The generated key is marked as non-extractable and sensitive for security.
-func (t *Token) GenerateAESKey(keySize int, attrs ...*Attribute) (*SymmetricKey, error) {
+func (t *Token) GenerateAESKey(ctx context.Context, keySize int, attrs ...*Attribute) (*SymmetricKey, error) {
 	if keySize != 128 && keySize != 192 && keySize != 256 {
 		return nil, errors.New("AES key size must be 128, 192, or 256 bits")
 	}
 
-	session, err := t.GetSession()
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// default attributes
 	newId := xid.New()
@@ -46,21 +51,24 @@ func (t *Token) GenerateAESKey(keySize int, attrs ...*Attribute) (*SymmetricKey,
 	template := attributeMap2Slice(mergeAttribute(defaultTemplateMap, attrs))
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_GEN, nil)
-	handle, err := t.ctx.GenerateKey(session, []*pkcs11.Mechanism{mechanism}, template)
+	handle, err := session.GetCtx().GenerateKey(sessionHandle, []*pkcs11.Mechanism{mechanism}, template)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return t.getSymmetricKey(handle)
+	return t.getSymmetricKey(ctx, handle)
 }
 
 // GenerateDESKey generates a new DES symmetric key (64 bits) in the PKCS#11 device.
 // The generated key is marked as non-extractable and sensitive for security.
-func (t *Token) GenerateDESKey(attrs ...*Attribute) (*SymmetricKey, error) {
-	session, err := t.GetSession()
+func (t *Token) GenerateDESKey(ctx context.Context, attrs ...*Attribute) (*SymmetricKey, error) {
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// default attributes
 	newId := xid.New()
@@ -87,21 +95,24 @@ func (t *Token) GenerateDESKey(attrs ...*Attribute) (*SymmetricKey, error) {
 	template := attributeMap2Slice(mergeAttribute(defaultTemplateMap, attrs))
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_DES_KEY_GEN, nil)
-	handle, err := t.ctx.GenerateKey(session, []*pkcs11.Mechanism{mechanism}, template)
+	handle, err := session.GetCtx().GenerateKey(sessionHandle, []*pkcs11.Mechanism{mechanism}, template)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return t.getSymmetricKey(handle)
+	return t.getSymmetricKey(ctx, handle)
 }
 
 // Generate3DESKey generates a new 3DES symmetric key (192 bits) in the PKCS#11 device.
 // The generated key is marked as non-extractable and sensitive for security.
-func (t *Token) Generate3DESKey(attrs ...*Attribute) (*SymmetricKey, error) {
-	session, err := t.GetSession()
+func (t *Token) Generate3DESKey(ctx context.Context, attrs ...*Attribute) (*SymmetricKey, error) {
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// default attributes
 	newId := xid.New()
@@ -128,26 +139,29 @@ func (t *Token) Generate3DESKey(attrs ...*Attribute) (*SymmetricKey, error) {
 	template := attributeMap2Slice(mergeAttribute(defaultTemplateMap, attrs))
 
 	mechanism := pkcs11.NewMechanism(pkcs11.CKM_DES3_KEY_GEN, nil)
-	handle, err := t.ctx.GenerateKey(session, []*pkcs11.Mechanism{mechanism}, template)
+	handle, err := session.GetCtx().GenerateKey(sessionHandle, []*pkcs11.Mechanism{mechanism}, template)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return t.getSymmetricKey(handle)
+	return t.getSymmetricKey(ctx, handle)
 }
 
 // ImportAESKey imports existing AES key material into the PKCS#11 device.
 // Supported key sizes are 16, 24, or 32 bytes (128, 192, or 256 bits).
 // The imported key is marked as non-extractable and sensitive for security.
-func (t *Token) ImportAESKey(keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
+func (t *Token) ImportAESKey(ctx context.Context, keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
 	if len(keyMaterial) != 16 && len(keyMaterial) != 24 && len(keyMaterial) != 32 {
 		return nil, errors.New("AES key material must be 16, 24, or 32 bytes (128, 192, or 256 bits)")
 	}
 
-	session, err := t.GetSession()
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// default attributes
 	newId := xid.New()
@@ -175,26 +189,29 @@ func (t *Token) ImportAESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmetri
 	}
 	template := attributeMap2Slice(mergeAttribute(defaultTemplateMap, attrs))
 
-	handle, err := t.ctx.CreateObject(session, template)
+	handle, err := session.GetCtx().CreateObject(sessionHandle, template)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return t.getSymmetricKey(handle)
+	return t.getSymmetricKey(ctx, handle)
 }
 
 // ImportDESKey imports existing DES key material into the PKCS#11 device.
 // Key material must be exactly 8 bytes (64 bits).
 // The imported key is marked as non-extractable and sensitive for security.
-func (t *Token) ImportDESKey(keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
+func (t *Token) ImportDESKey(ctx context.Context, keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
 	if len(keyMaterial) != 8 {
 		return nil, errors.New("DES key material must be exactly 8 bytes (64 bits)")
 	}
 
-	session, err := t.GetSession()
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// default attributes
 	newId := xid.New()
@@ -222,7 +239,7 @@ func (t *Token) ImportDESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmetri
 	}
 	template := attributeMap2Slice(mergeAttribute(defaultTemplateMap, attrs))
 
-	handle, err := t.ctx.CreateObject(session, template)
+	handle, err := session.GetCtx().CreateObject(sessionHandle, template)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -241,15 +258,18 @@ func (t *Token) ImportDESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmetri
 // Import3DESKey imports existing 3DES key material into the PKCS#11 device.
 // Key material must be exactly 24 bytes (192 bits).
 // The imported key is marked as non-extractable and sensitive for security.
-func (t *Token) Import3DESKey(keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
+func (t *Token) Import3DESKey(ctx context.Context, keyMaterial []byte, attrs ...*Attribute) (*SymmetricKey, error) {
 	if len(keyMaterial) != 24 {
 		return nil, errors.New("3DES key material must be exactly 24 bytes (192 bits)")
 	}
 
-	session, err := t.GetSession()
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// default attributes
 	newId := xid.New()
@@ -277,35 +297,35 @@ func (t *Token) Import3DESKey(keyMaterial []byte, attrs ...*Attribute) (*Symmetr
 	}
 	template := attributeMap2Slice(mergeAttribute(defaultTemplateMap, attrs))
 
-	handle, err := t.ctx.CreateObject(session, template)
+	handle, err := session.GetCtx().CreateObject(sessionHandle, template)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	return t.getSymmetricKey(handle)
+	return t.getSymmetricKey(ctx, handle)
 }
 
-func (t *Token) GetSymmetricKey(keyID []byte) (*SymmetricKey, error) {
-	privHandle, err := t.getSymmetricKeyHandle(keyID)
+func (t *Token) GetSymmetricKey(ctx context.Context, keyID []byte) (*SymmetricKey, error) {
+	privHandle, err := t.getSymmetricKeyHandle(ctx, keyID)
 	if err != nil {
 		return nil, err
 	}
 
-	return t.getSymmetricKey(privHandle)
+	return t.getSymmetricKey(ctx, privHandle)
 }
 
 // ListSymmetricKeys returns all symmetric keys stored in the PKCS#11 device.
 // Keys that cannot be processed (due to unsupported types, etc.) are silently skipped.
-func (t *Token) ListSymmetricKeys(attrs ...*Attribute) ([]*SymmetricKey, error) {
+func (t *Token) ListSymmetricKeys(ctx context.Context, attrs ...*Attribute) ([]*SymmetricKey, error) {
 
-	handles, err := t.listSymmetricKeyHandles(attrs...)
+	handles, err := t.listSymmetricKeyHandles(ctx, attrs...)
 	if err != nil {
 		return nil, err
 	}
 
 	keys := []*SymmetricKey{}
 	for _, handle := range handles {
-		key, err := t.getSymmetricKey(handle)
+		key, err := t.getSymmetricKey(ctx, handle)
 		// TODO: should logging
 		if err != nil {
 			continue
@@ -318,43 +338,49 @@ func (t *Token) ListSymmetricKeys(attrs ...*Attribute) ([]*SymmetricKey, error) 
 
 // DeleteSymmetricKey deletes a symmetric key from the PKCS#11 device.
 // Returns an error if the deletion fails.
-func (t *Token) DeleteSymmetricKey(keyID []byte) error {
-	handle, err := t.getSymmetricKeyHandle(keyID)
+func (t *Token) DeleteSymmetricKey(ctx context.Context, keyID []byte) error {
+	handle, err := t.getSymmetricKeyHandle(ctx, keyID)
 	if err != nil {
 		return err
 	}
 
-	session, err := t.GetSession()
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return ConvertPKCS11Error(err)
 	}
-	if err := t.ctx.DestroyObject(session, handle); err != nil {
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
+	if err := session.GetCtx().DestroyObject(sessionHandle, handle); err != nil {
 		return ConvertPKCS11Error(err)
 	}
 
 	return nil
 }
 
-func (t *Token) listSymmetricKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHandle, error) {
-	session, err := t.GetSession()
+func (t *Token) listSymmetricKeyHandles(ctx context.Context, attrs ...*Attribute) ([]pkcs11.ObjectHandle, error) {
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	templateMap := map[uint]any{
 		pkcs11.CKA_CLASS: pkcs11.CKO_SECRET_KEY,
 	}
 	template := attributeMap2Slice(mergeAttribute(templateMap, attrs))
 
-	if err := t.ctx.FindObjectsInit(session, template); err != nil {
+	if err := session.GetCtx().FindObjectsInit(sessionHandle, template); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
 	var handles []pkcs11.ObjectHandle
 	for {
-		gotHandles, more, err := t.ctx.FindObjects(session, 10)
+		gotHandles, more, err := session.GetCtx().FindObjects(sessionHandle, 10)
 		if err != nil {
-			t.ctx.FindObjectsFinal(session)
+			session.GetCtx().FindObjectsFinal(sessionHandle)
 			return nil, ConvertPKCS11Error(err)
 		}
 		handles = append(handles, gotHandles...)
@@ -363,7 +389,7 @@ func (t *Token) listSymmetricKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHan
 		}
 	}
 
-	if err := t.ctx.FindObjectsFinal(session); err != nil {
+	if err := session.GetCtx().FindObjectsFinal(sessionHandle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
@@ -371,12 +397,12 @@ func (t *Token) listSymmetricKeyHandles(attrs ...*Attribute) ([]pkcs11.ObjectHan
 
 }
 
-func (t *Token) getSymmetricKeyHandle(keyID []byte) (pkcs11.ObjectHandle, error) {
+func (t *Token) getSymmetricKeyHandle(ctx context.Context, keyID []byte) (pkcs11.ObjectHandle, error) {
 	attrs := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_ID, keyID),
 	}
-	handles, err := t.listKeyHandles(attrs...)
+	handles, err := t.listKeyHandles(ctx, attrs...)
 	if err != nil {
 		return 0, err
 	}
@@ -389,11 +415,14 @@ func (t *Token) getSymmetricKeyHandle(keyID []byte) (pkcs11.ObjectHandle, error)
 
 // getSymmetricKey retrieves symmetric key information from a PKCS#11 object handle.
 // It extracts the key attributes and constructs a SymmetricKey structure.
-func (t *Token) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, error) {
-	session, err := t.GetSession()
+func (t *Token) getSymmetricKey(ctx context.Context, handle pkcs11.ObjectHandle) (*SymmetricKey, error) {
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	attrsQuery := []*Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
@@ -401,7 +430,7 @@ func (t *Token) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, erro
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 	}
 
-	attrs, err := t.ctx.GetAttributeValue(session, handle, attrsQuery)
+	attrs, err := session.GetCtx().GetAttributeValue(sessionHandle, handle, attrsQuery)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -426,7 +455,7 @@ func (t *Token) getSymmetricKey(handle pkcs11.ObjectHandle) (*SymmetricKey, erro
 			pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, nil),
 		}
 
-		attrs, err := t.ctx.GetAttributeValue(session, handle, attrsQuery)
+		attrs, err := session.GetCtx().GetAttributeValue(sessionHandle, handle, attrsQuery)
 		if err != nil {
 			return nil, ConvertPKCS11Error(err)
 		}

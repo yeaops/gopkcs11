@@ -15,6 +15,8 @@ const (
 	ErrUnknown ErrorCode = iota
 	// ErrNotInitialized indicates the PKCS#11 library is not initialized
 	ErrNotInitialized
+	// ErrAlreadyInitialized indicates the PKCS#11 library is already initialized
+	ErrAlreadyInitialized
 	// ErrSessionInvalid indicates the session handle is invalid
 	ErrSessionInvalid
 	// ErrKeyNotFound indicates a requested key could not be found
@@ -87,6 +89,9 @@ func ConvertPKCS11Error(err error) error {
 	case pkcs11.CKR_CRYPTOKI_NOT_INITIALIZED:
 		code = ErrNotInitialized
 		message = "PKCS#11 not initialized"
+	case pkcs11.CKR_CRYPTOKI_ALREADY_INITIALIZED:
+		code = ErrAlreadyInitialized
+		message = "PKCS#11 already initialized"
 	case pkcs11.CKR_SESSION_HANDLE_INVALID:
 		code = ErrSessionInvalid
 		message = "invalid session handle"
@@ -171,4 +176,8 @@ func IsKeyNotFoundError(err error) bool {
 // IsSessionError checks if an error is related to session management (invalid session, not initialized, etc.).
 func IsSessionError(err error) bool {
 	return IsPKCS11Error(err, ErrSessionInvalid) || IsPKCS11Error(err, ErrNotInitialized)
+}
+
+func IsAlreadyInitializedError(err error) bool {
+	return IsPKCS11Error(err, ErrAlreadyInitialized)
 }

@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"crypto/rand"
 	"strings"
 	"sync"
@@ -106,7 +107,7 @@ func TestGenerateAESKey(t *testing.T, ctx *TestContext) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
-			key, err := token.GenerateAESKey(tc.keySize)
+			key, err := token.GenerateAESKey(context.Background(), tc.keySize)
 
 			if tc.valid {
 				if err != nil {
@@ -147,7 +148,7 @@ func TestGenerateDESKey(t *testing.T, ctx *TestContext) {
 	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
-	key, err := token.GenerateDESKey()
+	key, err := token.GenerateDESKey(context.Background(), )
 	if err != nil {
 		t.Fatalf("GenerateDESKey should not fail: %v", err)
 	}
@@ -176,7 +177,7 @@ func TestGenerate3DESKey(t *testing.T, ctx *TestContext) {
 	token, cleanup := ctx.CreateTestToken(t)
 	defer cleanup()
 
-	key, err := token.Generate3DESKey()
+	key, err := token.Generate3DESKey(context.Background(), )
 	if err != nil {
 		t.Fatalf("Generate3DESKey should not fail: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestImportAESKey(t *testing.T, ctx *TestContext) {
 				t.Fatalf("Failed to generate key material: %v", err)
 			}
 
-			key, err := token.ImportAESKey(keyMaterial)
+			key, err := token.ImportAESKey(context.Background(), keyMaterial)
 
 			if tc.shouldFail {
 				if err == nil {
@@ -271,7 +272,7 @@ func TestImportDESKey(t *testing.T, ctx *TestContext) {
 			t.Fatalf("Failed to generate key material: %v", err)
 		}
 
-		key, err := token.ImportDESKey(keyMaterial)
+		key, err := token.ImportDESKey(context.Background(), keyMaterial)
 		if err != nil {
 			t.Errorf("ImportDESKey should not fail: %v", err)
 		}
@@ -293,7 +294,7 @@ func TestImportDESKey(t *testing.T, ctx *TestContext) {
 			t.Fatalf("Failed to generate key material: %v", err)
 		}
 
-		key, err := token.ImportDESKey(keyMaterial)
+		key, err := token.ImportDESKey(context.Background(), keyMaterial)
 		if err == nil {
 			t.Error("ImportDESKey should fail with invalid key material size")
 		}
@@ -318,7 +319,7 @@ func TestImport3DESKey(t *testing.T, ctx *TestContext) {
 			t.Fatalf("Failed to generate key material: %v", err)
 		}
 
-		key, err := token.Import3DESKey(keyMaterial)
+		key, err := token.Import3DESKey(context.Background(), keyMaterial)
 		if err != nil {
 			t.Errorf("Import3DESKey should not fail: %v", err)
 		}
@@ -340,7 +341,7 @@ func TestImport3DESKey(t *testing.T, ctx *TestContext) {
 			t.Fatalf("Failed to generate key material: %v", err)
 		}
 
-		key, err := token.Import3DESKey(keyMaterial)
+		key, err := token.Import3DESKey(context.Background(), keyMaterial)
 		if err == nil {
 			t.Error("Import3DESKey should fail with invalid key material size")
 		}
@@ -360,13 +361,13 @@ func TestGetSymmetricKey(t *testing.T, ctx *TestContext) {
 
 	// Generate a key first
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	originalKey, err := token.GenerateAESKey(keySize)
+	originalKey, err := token.GenerateAESKey(context.Background(), keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
 
 	// Retrieve the key
-	retrievedKey, err := token.GetSymmetricKey(originalKey.ID)
+	retrievedKey, err := token.GetSymmetricKey(context.Background(), originalKey.ID)
 	if err != nil {
 		t.Errorf("GetSymmetricKey should not fail: %v", err)
 	}
@@ -392,7 +393,7 @@ func TestGetSymmetricKey(t *testing.T, ctx *TestContext) {
 	nonExistentID := make([]byte, 16)
 	rand.Read(nonExistentID)
 
-	_, err = token.GetSymmetricKey(nonExistentID)
+	_, err = token.GetSymmetricKey(context.Background(), nonExistentID)
 	if err == nil {
 		t.Error("GetSymmetricKey should fail with non-existent key ID")
 	}
@@ -408,26 +409,26 @@ func TestListSymmetricKeys(t *testing.T, ctx *TestContext) {
 
 	// Generate different types of keys
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	aesKey, err := token.GenerateAESKey(keySize)
+	aesKey, err := token.GenerateAESKey(context.Background(), keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
 	keys = append(keys, aesKey)
 
-	desKey, err := token.GenerateDESKey()
+	desKey, err := token.GenerateDESKey(context.Background(), )
 	if err != nil {
 		t.Fatalf("Failed to generate DES key: %v", err)
 	}
 	keys = append(keys, desKey)
 
-	tripleDesKey, err := token.Generate3DESKey()
+	tripleDesKey, err := token.Generate3DESKey(context.Background(), )
 	if err != nil {
 		t.Fatalf("Failed to generate 3DES key: %v", err)
 	}
 	keys = append(keys, tripleDesKey)
 
 	// List all keys
-	allKeys, err := token.ListSymmetricKeys()
+	allKeys, err := token.ListSymmetricKeys(context.Background(), )
 	if err != nil {
 		t.Errorf("ListSymmetricKeys should not fail: %v", err)
 	}
@@ -463,25 +464,25 @@ func TestDeleteSymmetricKey(t *testing.T, ctx *TestContext) {
 
 	// Generate a key
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := token.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(context.Background(), keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
 
 	// Verify key exists
-	_, err = token.GetSymmetricKey(key.ID)
+	_, err = token.GetSymmetricKey(context.Background(), key.ID)
 	if err != nil {
 		t.Errorf("Key should exist before deletion: %v", err)
 	}
 
 	// Delete the key
-	err = token.DeleteSymmetricKey(key.ID)
+	err = token.DeleteSymmetricKey(context.Background(), key.ID)
 	if err != nil {
 		t.Errorf("DeleteSymmetricKey should not fail: %v", err)
 	}
 
 	// Verify key is deleted
-	_, err = token.GetSymmetricKey(key.ID)
+	_, err = token.GetSymmetricKey(context.Background(), key.ID)
 	if err == nil {
 		t.Error("Key should not exist after deletion")
 	}
@@ -490,7 +491,7 @@ func TestDeleteSymmetricKey(t *testing.T, ctx *TestContext) {
 	nonExistentID := make([]byte, 16)
 	rand.Read(nonExistentID)
 
-	err = token.DeleteSymmetricKey(nonExistentID)
+	err = token.DeleteSymmetricKey(context.Background(), nonExistentID)
 	if err == nil {
 		t.Error("DeleteSymmetricKey should fail with non-existent key ID")
 	}
@@ -506,7 +507,7 @@ func TestSymmetricKeyWithCustomAttributes(t *testing.T, ctx *TestContext) {
 	labelAttr := pkcs11.NewLabelAttribute(customLabel)
 
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := token.GenerateAESKey(keySize, labelAttr)
+	key, err := token.GenerateAESKey(context.Background(), keySize, labelAttr)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key with custom attributes: %v", err)
 	}
@@ -519,7 +520,7 @@ func TestSymmetricKeyWithCustomAttributes(t *testing.T, ctx *TestContext) {
 	customID := []byte("custom-id-12345")
 	idAttr := pkcs11.NewIDAttribute(customID)
 
-	key2, err := token.GenerateAESKey(128, idAttr)
+	key2, err := token.GenerateAESKey(context.Background(), 128, idAttr)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key with custom ID: %v", err)
 	}
@@ -553,7 +554,7 @@ func TestSymmetricKeyConcurrentOperations(t *testing.T, ctx *TestContext) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			key, err := token.GenerateAESKey(keySize)
+			key, err := token.GenerateAESKey(context.Background(), keySize)
 			keys[index] = key
 			errors[index] = err
 		}(i)
@@ -589,7 +590,7 @@ func TestSymmetricKeyErrorCases(t *testing.T, ctx *TestContext) {
 	defer cleanup()
 
 	t.Run("InvalidAESKeySize", func(t *testing.T) {
-		_, err := token.GenerateAESKey(200) // Invalid size
+		_, err := token.GenerateAESKey(context.Background(), 200) // Invalid size
 		if err == nil {
 			t.Error("GenerateAESKey should fail with invalid key size")
 		}
@@ -599,28 +600,28 @@ func TestSymmetricKeyErrorCases(t *testing.T, ctx *TestContext) {
 	})
 
 	t.Run("NilKeyMaterial", func(t *testing.T) {
-		_, err := token.ImportAESKey(nil)
+		_, err := token.ImportAESKey(context.Background(), nil)
 		if err == nil {
 			t.Error("ImportAESKey should fail with nil key material")
 		}
 	})
 
 	t.Run("EmptyKeyMaterial", func(t *testing.T) {
-		_, err := token.ImportAESKey([]byte{})
+		_, err := token.ImportAESKey(context.Background(), []byte{})
 		if err == nil {
 			t.Error("ImportAESKey should fail with empty key material")
 		}
 	})
 
 	t.Run("NilKeyID", func(t *testing.T) {
-		_, err := token.GetSymmetricKey(nil)
+		_, err := token.GetSymmetricKey(context.Background(), nil)
 		if err == nil {
 			t.Error("GetSymmetricKey should fail with nil key ID")
 		}
 	})
 
 	t.Run("EmptyKeyID", func(t *testing.T) {
-		_, err := token.GetSymmetricKey([]byte{})
+		_, err := token.GetSymmetricKey(context.Background(), []byte{})
 		if err == nil {
 			t.Error("GetSymmetricKey should fail with empty key ID")
 		}
@@ -634,7 +635,7 @@ func TestSymmetricKeyString(t *testing.T, ctx *TestContext) {
 
 	// Test AES key string representation
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	aesKey, err := token.GenerateAESKey(keySize)
+	aesKey, err := token.GenerateAESKey(context.Background(), keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -654,7 +655,7 @@ func TestSymmetricKeyString(t *testing.T, ctx *TestContext) {
 	}
 
 	// Test DES key string representation
-	desKey, err := token.GenerateDESKey()
+	desKey, err := token.GenerateDESKey(context.Background(), )
 	if err != nil {
 		t.Fatalf("Failed to generate DES key: %v", err)
 	}
@@ -665,7 +666,7 @@ func TestSymmetricKeyString(t *testing.T, ctx *TestContext) {
 	}
 
 	// Test 3DES key string representation
-	tripleDesKey, err := token.Generate3DESKey()
+	tripleDesKey, err := token.Generate3DESKey(context.Background(), )
 	if err != nil {
 		t.Fatalf("Failed to generate 3DES key: %v", err)
 	}
@@ -683,13 +684,13 @@ func TestSymmetricKeyLifecycle(t *testing.T, ctx *TestContext) {
 
 	// Test complete lifecycle: generate -> retrieve -> list -> delete
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := token.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(context.Background(), keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
 
 	// Retrieve
-	retrievedKey, err := token.GetSymmetricKey(key.ID)
+	retrievedKey, err := token.GetSymmetricKey(context.Background(), key.ID)
 	if err != nil {
 		t.Errorf("Failed to retrieve key: %v", err)
 	}
@@ -698,7 +699,7 @@ func TestSymmetricKeyLifecycle(t *testing.T, ctx *TestContext) {
 	}
 
 	// List
-	keys, err := token.ListSymmetricKeys()
+	keys, err := token.ListSymmetricKeys(context.Background(), )
 	if err != nil {
 		t.Errorf("Failed to list keys: %v", err)
 	}
@@ -715,13 +716,13 @@ func TestSymmetricKeyLifecycle(t *testing.T, ctx *TestContext) {
 	}
 
 	// Delete
-	err = token.DeleteSymmetricKey(key.ID)
+	err = token.DeleteSymmetricKey(context.Background(), key.ID)
 	if err != nil {
 		t.Errorf("Failed to delete key: %v", err)
 	}
 
 	// Verify deletion
-	_, err = token.GetSymmetricKey(key.ID)
+	_, err = token.GetSymmetricKey(context.Background(), key.ID)
 	if err == nil {
 		t.Error("Key should not exist after deletion")
 	}
@@ -734,7 +735,7 @@ func TestSymmetricKeyAttributeValidation(t *testing.T, ctx *TestContext) {
 
 	// Test that generated keys have proper attributes
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key, err := token.GenerateAESKey(keySize)
+	key, err := token.GenerateAESKey(context.Background(), keySize)
 	if err != nil {
 		t.Fatalf("Failed to generate AES key: %v", err)
 	}
@@ -770,7 +771,7 @@ func TestSymmetricKeyImportExportWorkflow(t *testing.T, ctx *TestContext) {
 	}
 
 	// Import the key
-	importedKey, err := token.ImportAESKey(keyMaterial)
+	importedKey, err := token.ImportAESKey(context.Background(), keyMaterial)
 	if err != nil {
 		t.Fatalf("Failed to import AES key: %v", err)
 	}
@@ -784,7 +785,7 @@ func TestSymmetricKeyImportExportWorkflow(t *testing.T, ctx *TestContext) {
 	}
 
 	// Use the imported key (by retrieving it)
-	retrievedKey, err := token.GetSymmetricKey(importedKey.ID)
+	retrievedKey, err := token.GetSymmetricKey(context.Background(), importedKey.ID)
 	if err != nil {
 		t.Errorf("Failed to retrieve imported key: %v", err)
 	}
@@ -801,7 +802,7 @@ func TestSymmetricKeyImportExportWorkflow(t *testing.T, ctx *TestContext) {
 	}
 
 	// Clean up
-	err = token.DeleteSymmetricKey(importedKey.ID)
+	err = token.DeleteSymmetricKey(context.Background(), importedKey.ID)
 	if err != nil {
 		t.Errorf("Failed to delete imported key: %v", err)
 	}
@@ -817,18 +818,18 @@ func TestSymmetricKeyFilteredListing(t *testing.T, ctx *TestContext) {
 	label2 := "test-key-2"
 
 	keySize := ctx.Config.SupportedAESKeySizes[0]
-	key1, err := token.GenerateAESKey(keySize, pkcs11.NewLabelAttribute(label1))
+	key1, err := token.GenerateAESKey(context.Background(), keySize, pkcs11.NewLabelAttribute(label1))
 	if err != nil {
 		t.Fatalf("Failed to generate first key: %v", err)
 	}
 
-	key2, err := token.GenerateAESKey(128, pkcs11.NewLabelAttribute(label2))
+	key2, err := token.GenerateAESKey(context.Background(), 128, pkcs11.NewLabelAttribute(label2))
 	if err != nil {
 		t.Fatalf("Failed to generate second key: %v", err)
 	}
 
 	// List all keys
-	allKeys, err := token.ListSymmetricKeys()
+	allKeys, err := token.ListSymmetricKeys(context.Background(), )
 	if err != nil {
 		t.Errorf("Failed to list all keys: %v", err)
 	}
@@ -852,8 +853,8 @@ func TestSymmetricKeyFilteredListing(t *testing.T, ctx *TestContext) {
 	}
 
 	// Clean up
-	token.DeleteSymmetricKey(key1.ID)
-	token.DeleteSymmetricKey(key2.ID)
+	token.DeleteSymmetricKey(context.Background(), key1.ID)
+	token.DeleteSymmetricKey(context.Background(), key2.ID)
 }
 
 // Helper function to check if a slice contains a value

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,21 +25,40 @@ type TestSoftHSM struct {
 	tokenDir          string
 	softhsmConfigFile string
 
+	ctx *pkcs11.Ctx
+
 	cleanup func()
+
+	ru sync.Mutex
 }
 
 func NewTestSoftHSM() (*TestSoftHSM, error) {
 	hsm := &TestSoftHSM{}
 
-	os.Setenv("PKCS11_LIBRARY_PATH", "build/lib/softhsm/libsofthsm2.so")
-	err := hsm.setup()
-	if err != nil {
-		return nil, err
+	// Check environment variable first
+	if path := os.Getenv("PKCS11_LIBRARY_PATH"); path == "" {
+		os.Setenv("PKCS11_LIBRARY_PATH", "build/lib/softhsm/libsofthsm2.so")
+		err := hsm.setup()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Set environment variable for SoftHSM config
 	oldConfig := os.Getenv("SOFTHSM2_CONF")
 	os.Setenv("SOFTHSM2_CONF", hsm.softhsmConfigFile)
+
+	// init ctx
+	// load SoftHSM library
+	p11Ctx := pkcs11.New(hsm.libraryPath)
+	if p11Ctx == nil {
+		return nil, fmt.Errorf("Could not load PKCS#11 library on getSlotCount")
+	}
+
+	if err := p11Ctx.Initialize(); err != nil {
+		return nil, fmt.Errorf("Could not initialize PKCS#11 library on getSlotCount: %w", err)
+	}
+	hsm.ctx = p11Ctx
 
 	cleanup := func() {
 		// Restore original config
@@ -94,6 +114,7 @@ slots.removable = false
 }
 
 // getBundledSoftHSMPath returns the path to the SoftHSM library
+
 func getBundledSoftHSMPath() (string, error) {
 	// Check environment variable first
 	if path := os.Getenv("PKCS11_LIBRARY_PATH"); path != "" {
@@ -136,6 +157,11 @@ func getBundledSoftHSMPath() (string, error) {
 func (t *TestSoftHSM) Cleanup() error {
 	t.cleanup()
 
+	if t.ctx != nil {
+		t.ctx.Finalize()
+		t.ctx.Destroy()
+	}
+
 	return nil
 }
 
@@ -169,35 +195,27 @@ func (t *TestSoftHSM) CreateToken(tokenLabel, soPin, userPin string) (*gopkcs11.
 // NewToken implements the HSMTestSuite interface for running e2e tests
 func (t *TestSoftHSM) NewToken(tb testing.TB) (*gopkcs11.Token, func()) {
 	tb.Helper()
-	
+
+	t.ru.Lock()
+	defer t.ru.Unlock()
+
 	token, err := t.CreateToken(defaultLabel, defaultSOPIN, defaultUserPIN)
 	if err != nil {
 		tb.Fatalf("Failed to create SoftHSM token: %v", err)
 	}
-	
+
 	cleanup := func() {
 		if token != nil {
 			token.Close()
 		}
 	}
-	
+
 	return token, cleanup
 }
 
 func (t *TestSoftHSM) getSlotCount() (uint, error) {
 	// load SoftHSM library
-	p11 := pkcs11.New(t.libraryPath)
-	if p11 == nil {
-		return 0, fmt.Errorf("Could not load PKCS#11 library")
-	}
-	defer p11.Destroy()
-
-	if err := p11.Initialize(); err != nil {
-		return 0, err
-	}
-	defer p11.Finalize()
-
-	allSlots, err := p11.GetSlotList(true)
+	allSlots, err := t.ctx.GetSlotList(true)
 	if err != nil {
 		return 0, fmt.Errorf("Could not get slot list: %v", err)
 	}
@@ -211,40 +229,28 @@ func (t *TestSoftHSM) initializeSoftHSMToken(slotID uint, tokenLabel, soPin, use
 		return err
 	}
 
-	// load SoftHSM library
-	p11 := pkcs11.New(t.libraryPath)
-	if p11 == nil {
-		return fmt.Errorf("Could not load PKCS#11 library")
-	}
-	defer p11.Destroy()
-
-	if err := p11.Initialize(); err != nil {
-		return err
-	}
-	defer p11.Finalize()
-
 	// Use the first available slot
 	slotID = slotCount - 1
 
-	err = p11.InitToken(slotID, soPin, tokenLabel)
+	err = t.ctx.InitToken(slotID, soPin, tokenLabel)
 	if err != nil {
 		return fmt.Errorf("InitToken failed: %v", err)
 	}
 
 	// init user pin
-	session, err := p11.OpenSession(slotID, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
+	sessionHandle, err := t.ctx.OpenSession(slotID, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
 	if err != nil {
 		return fmt.Errorf("OpenSession failed: %v", err)
 	}
-	defer p11.CloseSession(session)
+	defer t.ctx.CloseSession(sessionHandle)
 
-	err = p11.Login(session, pkcs11.CKU_SO, soPin)
+	err = t.ctx.Login(sessionHandle, pkcs11.CKU_SO, soPin)
 	if err != nil {
 		return fmt.Errorf("SO login failed: %v", err)
 	}
-	defer p11.Logout(session)
+	defer t.ctx.Logout(sessionHandle)
 
-	err = p11.InitPIN(session, userPin)
+	err = t.ctx.InitPIN(sessionHandle, userPin)
 	if err != nil {
 		return fmt.Errorf("InitPIN failed: %v", err)
 	}

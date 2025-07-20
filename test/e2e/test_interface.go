@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/yeaops/gopkcs11"
@@ -50,6 +51,8 @@ func DefaultCommonTestConfig() *CommonTestConfig {
 type TestContext struct {
 	HSM    HSMTestSuite
 	Config *CommonTestConfig
+
+	mu sync.RWMutex
 }
 
 // NewTestContext creates a new test context with the given HSM suite and optional config
@@ -66,5 +69,10 @@ func NewTestContext(hsm HSMTestSuite, config *CommonTestConfig) *TestContext {
 // CreateTestToken is a convenience method that creates a test token using the HSM suite
 func (ctx *TestContext) CreateTestToken(t testing.TB) (*gopkcs11.Token, func()) {
 	t.Helper()
-	return ctx.HSM.NewToken(t)
+
+	ctx.mu.RLock()
+	token, cleanup := ctx.HSM.NewToken(t)
+	ctx.mu.RUnlock()
+
+	return token, cleanup
 }

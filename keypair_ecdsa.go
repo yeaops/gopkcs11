@@ -1,6 +1,7 @@
 package gopkcs11
 
 import (
+	"context"
 	"crypto"
 	"encoding/asn1"
 	"io"
@@ -37,10 +38,13 @@ func (e *ECDSAKeyPair) Public() crypto.PublicKey {
 // The digest parameter should be the already-hashed data.
 // ECDSA signatures are converted to DER format for compatibility with Go's crypto interfaces.
 func (e *ECDSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	session, err := e.token.GetSession()
+	session, err := e.token.GetSession(context.Background())
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	mechanism, expectedDigestLen, err := e.getECDSASignMechanism(opts)
 	if err != nil {
@@ -51,11 +55,11 @@ func (e *ECDSAKeyPair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpt
 		return nil, errors.Errorf("digest length mismatch: expected %d, got %d", expectedDigestLen, len(digest))
 	}
 
-	if err := e.token.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
+	if err := session.GetCtx().SignInit(sessionHandle, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	signature, err := e.token.ctx.Sign(session, digest)
+	signature, err := session.GetCtx().Sign(sessionHandle, digest)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
@@ -109,7 +113,7 @@ func (e *ECDSAKeyPair) convertECDSASignatureToDER(signature []byte) ([]byte, err
 	type ecdsaSignature struct {
 		R, S *big.Int
 	}
-	
+
 	sig := ecdsaSignature{R: r, S: s}
 	return asn1.Marshal(sig)
 }

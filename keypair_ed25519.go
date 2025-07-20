@@ -1,6 +1,7 @@
 package gopkcs11
 
 import (
+	"context"
 	"crypto"
 	"crypto/ed25519"
 	"io"
@@ -42,19 +43,22 @@ func (e *ED25519KeyPair) Sign(rand io.Reader, message []byte, opts crypto.Signer
 		return nil, errors.New("ED25519 does not support pre-hashing; pass the raw message")
 	}
 
-	session, err := e.token.GetSession()
+	session, err := e.token.GetSession(context.Background())
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
 
 	// ED25519 uses CKM_EDDSA mechanism
 	mechanism := pkcs11.NewMechanism(CKM_EDDSA, nil)
 
-	if err := e.token.ctx.SignInit(session, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
+	if err := session.GetCtx().SignInit(sessionHandle, []*pkcs11.Mechanism{mechanism}, e.Handle); err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
 
-	signature, err := e.token.ctx.Sign(session, message)
+	signature, err := session.GetCtx().Sign(sessionHandle, message)
 	if err != nil {
 		return nil, ConvertPKCS11Error(err)
 	}
