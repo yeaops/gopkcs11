@@ -11,29 +11,29 @@ import (
 // Example demonstrates how to use the new key-type-specific implementation.
 // This example shows the improved design where each key type has consolidated functionality.
 func Example() {
-	// Assume we have a client and some key pairs
-	var client *Client
+	// Assume we have a token and some key pairs
+	var token *Token
 	var rsaKeyPair, ecdsaKeyPair, ed25519KeyPair *KeyPair
 
 	// Example 1: Using the generic crypto.Signer interface
 	// Works for RSA, ECDSA, and ED25519 keys
-	exampleGenericSigner(client, rsaKeyPair)
-	exampleGenericSigner(client, ecdsaKeyPair)
-	exampleGenericSigner(client, ed25519KeyPair)
+	exampleGenericSigner(token, rsaKeyPair)
+	exampleGenericSigner(token, ecdsaKeyPair)
+	exampleGenericSigner(token, ed25519KeyPair)
 
 	// Example 2: Using RSA-specific functionality
-	exampleRSASpecificOperations(client, rsaKeyPair)
+	exampleRSASpecificOperations(token, rsaKeyPair)
 
 	// Example 3: Using ECDSA-specific functionality
-	exampleECDSASpecificOperations(client, ecdsaKeyPair)
+	exampleECDSASpecificOperations(token, ecdsaKeyPair)
 
 	// Example 4: Using ED25519-specific functionality
-	exampleED25519SpecificOperations(client, ed25519KeyPair)
+	exampleED25519SpecificOperations(token, ed25519KeyPair)
 
 }
 
 // exampleGenericSigner shows how to use any key type as a crypto.Signer
-func exampleGenericSigner(client *Client, keyPair *KeyPair) {
+func exampleGenericSigner(token *Token, keyPair *KeyPair) {
 	// Get a generic signer - works for both RSA and ECDSA
 	signer := keyPair.AsSigner()
 	if signer == nil {
@@ -55,7 +55,7 @@ func exampleGenericSigner(client *Client, keyPair *KeyPair) {
 }
 
 // exampleRSASpecificOperations shows RSA-specific operations (signing + decryption)
-func exampleRSASpecificOperations(client *Client, rsaKeyPair *KeyPair) {
+func exampleRSASpecificOperations(token *Token, rsaKeyPair *KeyPair) {
 	// Get RSA-specific implementation
 	rsaKey, err := NewRSAKeyPair(rsaKeyPair)
 	if err != nil {
@@ -88,7 +88,7 @@ func exampleRSASpecificOperations(client *Client, rsaKeyPair *KeyPair) {
 }
 
 // exampleECDSASpecificOperations shows ECDSA-specific operations (signing only)
-func exampleECDSASpecificOperations(client *Client, ecdsaKeyPair *KeyPair) {
+func exampleECDSASpecificOperations(token *Token, ecdsaKeyPair *KeyPair) {
 	// Get ECDSA-specific implementation
 	ecdsaKey, err := NewECDSAKeyPair(ecdsaKeyPair)
 	if err != nil {
@@ -113,7 +113,7 @@ func exampleECDSASpecificOperations(client *Client, ecdsaKeyPair *KeyPair) {
 }
 
 // exampleED25519SpecificOperations shows how to use ED25519-specific functionality
-func exampleED25519SpecificOperations(client *Client, keyPair *KeyPair) {
+func exampleED25519SpecificOperations(token *Token, keyPair *KeyPair) {
 	// Get an ED25519-specific key pair
 	ed25519Key, err := NewED25519KeyPair(keyPair)
 	if err != nil {

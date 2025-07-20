@@ -20,7 +20,7 @@ type KeyPairType int
 
 const (
 	// KeyPairTypeRSA represents RSA key pairs for signing and encryption
-	KeyPairTypeRSA KeyPairType = iota
+	KeyPairTypeRSA KeyPairType = iota + 1
 	// KeyPairTypeECDSA represents ECDSA key pairs for signing
 	KeyPairTypeECDSA
 	// KeyPairTypeED25519 represents ED25519 key pairs for signing
@@ -30,7 +30,7 @@ const (
 // KeyPair represents an asymmetric key pair stored in the PKCS#11 device.
 // It contains both the handle to the private key in the HSM and the public key material.
 type KeyPair struct {
-	client *Client
+	token *Token
 
 	// Handle is the PKCS#11 object handle for the private key
 	Handle pkcs11.ObjectHandle
@@ -89,7 +89,7 @@ type SymmetricKeyType int
 
 const (
 	// SymmetricKeyTypeAES represents AES symmetric keys (128, 192, 256 bits)
-	SymmetricKeyTypeAES SymmetricKeyType = iota
+	SymmetricKeyTypeAES SymmetricKeyType = iota + 1
 	// SymmetricKeyTypeDES represents DES symmetric keys (64 bits)
 	SymmetricKeyTypeDES
 	// SymmetricKeyType3DES represents 3DES symmetric keys (192 bits)
@@ -99,7 +99,7 @@ const (
 // SymmetricKey represents a symmetric encryption key stored in the PKCS#11 HSM.
 // It can be used for encryption, decryption, key wrapping, and key unwrapping operations.
 type SymmetricKey struct {
-	client *Client
+	token *Token
 
 	// Handle is the PKCS#11 object handle for the symmetric key
 	Handle pkcs11.ObjectHandle

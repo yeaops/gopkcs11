@@ -6,14 +6,14 @@ import (
 
 // Test SymmetricKey type constants
 func TestSymmetricKeyType_Constants(t *testing.T) {
-	if SymmetricKeyTypeAES != 0 {
-		t.Errorf("Expected SymmetricKeyTypeAES to be 0, got %d", SymmetricKeyTypeAES)
+	if SymmetricKeyTypeAES != 1 {
+		t.Errorf("Expected SymmetricKeyTypeAES to be 1, got %d", SymmetricKeyTypeAES)
 	}
-	if SymmetricKeyTypeDES != 1 {
-		t.Errorf("Expected SymmetricKeyTypeDES to be 1, got %d", SymmetricKeyTypeDES)
+	if SymmetricKeyTypeDES != 2 {
+		t.Errorf("Expected SymmetricKeyTypeDES to be 2, got %d", SymmetricKeyTypeDES)
 	}
-	if SymmetricKeyType3DES != 2 {
-		t.Errorf("Expected SymmetricKeyType3DES to be 2, got %d", SymmetricKeyType3DES)
+	if SymmetricKeyType3DES != 3 {
+		t.Errorf("Expected SymmetricKeyType3DES to be 3, got %d", SymmetricKeyType3DES)
 	}
 }
 
@@ -27,7 +27,7 @@ func TestSymmetricKey_String(t *testing.T) {
 		KeySize: 256,
 	}
 
-	expected := "SymmetricKey{Label: test-aes-key, Type: 0, Size: 256}"
+	expected := "SymmetricKey{Label: test-aes-key, Type: 1, Size: 256}"
 	result := symKey.String()
 
 	if result != expected {
@@ -38,10 +38,10 @@ func TestSymmetricKey_String(t *testing.T) {
 // Test AES key size validation
 func TestGenerateAESKey_KeySizeValidation(t *testing.T) {
 	testCases := []struct {
-		name     string
-		keySize  int
-		wantErr  bool
-		errMsg   string
+		name    string
+		keySize int
+		wantErr bool
+		errMsg  string
 	}{
 		{
 			name:    "valid AES 128",
@@ -216,10 +216,10 @@ func TestImportSymmetricKey_TypeMapping(t *testing.T) {
 // Test symmetric key encryption/decryption parameter validation
 func TestEncryptDecryptData_Validation(t *testing.T) {
 	testCases := []struct {
-		name     string
-		key      *SymmetricKey
-		wantErr  bool
-		errMsg   string
+		name    string
+		key     *SymmetricKey
+		wantErr bool
+		errMsg  string
 	}{
 		{
 			name:    "nil key",
@@ -307,42 +307,42 @@ func TestWrapUnwrapKey_Validation(t *testing.T) {
 // Test symmetric key attributes extraction logic
 func TestGetSymmetricKey_AttributeExtraction(t *testing.T) {
 	testCases := []struct {
-		name         string
-		keyTypeValue []byte
+		name          string
+		keyTypeValue  []byte
 		valueLenBytes []byte
-		expectedType SymmetricKeyType
-		expectedSize int
-		wantErr      bool
+		expectedType  SymmetricKeyType
+		expectedSize  int
+		wantErr       bool
 	}{
 		{
-			name:         "AES key",
-			keyTypeValue: []byte{byte(12)}, // CKK_AES value
+			name:          "AES key",
+			keyTypeValue:  []byte{byte(12)},    // CKK_AES value
 			valueLenBytes: []byte{32, 0, 0, 0}, // 32 bytes in little-endian
-			expectedType: SymmetricKeyTypeAES,
-			expectedSize: 256, // 32 * 8 bits
-			wantErr:      false,
+			expectedType:  SymmetricKeyTypeAES,
+			expectedSize:  256, // 32 * 8 bits
+			wantErr:       false,
 		},
 		{
-			name:         "DES key",
-			keyTypeValue: []byte{byte(19)}, // CKK_DES value
+			name:          "DES key",
+			keyTypeValue:  []byte{byte(19)}, // CKK_DES value
 			valueLenBytes: []byte{8, 0, 0, 0},
-			expectedType: SymmetricKeyTypeDES,
-			expectedSize: 64,
-			wantErr:      false,
+			expectedType:  SymmetricKeyTypeDES,
+			expectedSize:  64,
+			wantErr:       false,
 		},
 		{
-			name:         "3DES key",
-			keyTypeValue: []byte{byte(21)}, // CKK_DES3 value
+			name:          "3DES key",
+			keyTypeValue:  []byte{byte(21)}, // CKK_DES3 value
 			valueLenBytes: []byte{24, 0, 0, 0},
-			expectedType: SymmetricKeyType3DES,
-			expectedSize: 192,
-			wantErr:      false,
+			expectedType:  SymmetricKeyType3DES,
+			expectedSize:  192,
+			wantErr:       false,
 		},
 		{
-			name:         "empty key type",
-			keyTypeValue: []byte{},
+			name:          "empty key type",
+			keyTypeValue:  []byte{},
 			valueLenBytes: []byte{32, 0, 0, 0},
-			wantErr:      true,
+			wantErr:       true,
 		},
 	}
 

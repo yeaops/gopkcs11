@@ -14,146 +14,159 @@ import (
 
 type Attribute = pkcs11.Attribute
 
-// Client represents a connection to a PKCS#11 device (HSM).
-// It manages the PKCS#11 context, session, and authentication state.
-// Client is thread-safe and can be used concurrently from multiple goroutines.
-type Client struct {
-	ctx       *pkcs11.Ctx
-	config    *Config
-	session   pkcs11.SessionHandle
-	sessionMu sync.RWMutex
-	loggedIn  bool
-	lastUsed  time.Time
-	closeOnce sync.Once
+// Token represents a connection to a PKCS#11 device (HSM).
+// It manages the session pool for concurrent access with isolated sessions.
+// Token is thread-safe and can be used concurrently from multiple goroutines.
+type Token struct {
+	Config         *Config
+	ctx            *pkcs11.Ctx // shared PKCS#11 context for all sessions
+	pool           *Pool
+	managerSession pkcs11.SessionHandle
+	mu             sync.RWMutex // protects token state
+	closed         bool
+	closeOnce      sync.Once
 }
 
-// NewClient creates a new PKCS#11 client with the provided configuration.
-// It initializes the PKCS#11 library, opens a session, and authenticates with the device.
-// The client must be closed using Close() when no longer needed.
-func NewClient(config *Config) (*Client, error) {
+// NewToken creates a new PKCS#11 token with the provided configuration.
+// It validates the configuration and initializes the session pool.
+// The token must be closed using Close() when no longer needed.
+func NewToken(config *Config) (*Token, error) {
 	if err := config.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid PKCS#11 configuration")
 	}
 
-	ctx := pkcs11.New(config.LibraryPath)
-	if ctx == nil {
-		return nil, errors.New("failed to create PKCS#11 context")
+	token := &Token{
+		Config: config,
 	}
 
-	if err := ctx.Initialize(); err != nil {
-		return nil, errors.Wrap(err, "failed to initialize PKCS#11")
+	if err := token.configure(); err != nil {
+		return nil, errors.Wrap(err, "failed to configure PKCS#11 device")
 	}
 
-	client := &Client{
-		ctx:    ctx,
-		config: config,
-	}
-
-	if err := client.connect(); err != nil {
-		ctx.Finalize()
-		ctx.Destroy()
-		return nil, errors.Wrap(err, "failed to connect to PKCS#11 device")
-	}
-
-	return client, nil
+	return token, nil
 }
 
-// connect establishes a connection to the PKCS#11 device by finding the configured slot,
-// opening a session, and logging in with the user PIN. This is called internally by NewClient.
-func (c *Client) connect() error {
-	c.sessionMu.Lock()
-	defer c.sessionMu.Unlock()
+// configure finds the target slot and initializes the session pool.
+// This is called internally by NewToken.
+func (t *Token) configure() error {
+	// Create and initialize shared PKCS#11 context
+	t.ctx = pkcs11.New(t.Config.LibraryPath)
+	if t.ctx == nil {
+		return errors.New("failed to create PKCS#11 context")
+	}
+
+	if err := t.ctx.Initialize(); err != nil {
+		if !IsAlreadyInitializedError(ConvertPKCS11Error(err)) {
+			t.ctx.Destroy()
+			return errors.Wrap(err, "failed to initialize PKCS#11 context")
+		}
+	}
 
 	// Determine slot identification type
-	slotType, err := c.config.GetSlotIdentificationType()
+	slotType, err := t.Config.GetSlotIdentificationType()
 	if err != nil {
+		t.ctx.Finalize()
+		t.ctx.Destroy()
 		return errors.Wrap(err, "invalid slot identification configuration")
 	}
 
 	// Find target slot based on identification type
-	var targetSlot uint
-	if slotType == SlotIdentificationByID {
-		// For SlotID, try direct connection (optimization - no need to enumerate slots)
-		targetSlot = *c.config.SlotID
-	} else {
-		// For other methods, get available slots and search
-		slots, err := c.ctx.GetSlotList(true)
-		if err != nil {
-			return errors.Wrap(err, "failed to get slot list")
-		}
-		targetSlot, err = c.findSlot(slots, slotType)
-		if err != nil {
-			return errors.Wrap(err, "failed to find target slot")
-		}
+	slot, err := t.findSlot(slotType)
+	if err != nil || slot == nil {
+		t.ctx.Finalize()
+		t.ctx.Destroy()
+		return errors.Wrap(err, "failed to find target slot")
 	}
 
-	// Open session
-	session, err := c.ctx.OpenSession(targetSlot, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
+	// Create session pool with shared context
+	pool, err := newPool(t.Config, t.ctx, *slot)
 	if err != nil {
-		// For SlotID, provide better error message with available slots
-		if slotType == SlotIdentificationByID {
-			if slots, slotsErr := c.ctx.GetSlotList(true); slotsErr == nil {
-				return errors.Errorf("failed to open session on slot ID %d: %v (available slots: %v)", targetSlot, err, slots)
-			}
-		}
-		return errors.Wrap(err, "failed to open session")
+		t.ctx.Finalize()
+		t.ctx.Destroy()
+		return errors.Wrap(err, "failed to create context pool")
+	}
+	t.pool = pool
+
+	// Create manager session
+	managerSession, err := t.ctx.OpenSession(*slot, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
+	if err != nil {
+		t.ctx.Finalize()
+		t.ctx.Destroy()
+		return errors.Wrap(err, "failed to open manager session")
 	}
 
-	// Login
-	if err := c.ctx.Login(session, pkcs11.CKU_USER, c.config.UserPIN); err != nil {
-		c.ctx.CloseSession(session)
-		return errors.Wrap(err, "failed to login as CKU_USER")
+	if err := t.ctx.Login(managerSession, pkcs11.CKU_USER, t.Config.UserPIN); err != nil {
+		t.ctx.CloseSession(managerSession)
+		t.ctx.Finalize()
+		t.ctx.Destroy()
+		return errors.Wrap(err, "failed to login to manager session")
 	}
-
-	c.session = session
-	c.loggedIn = true
-	c.lastUsed = time.Now()
+	t.managerSession = managerSession
 
 	return nil
 }
 
 // findSlot locates the target slot based on the configured identification method
 // Note: SlotID uses direct connection optimization and doesn't call this method
-func (c *Client) findSlot(slots []uint, slotType SlotIdentificationType) (uint, error) {
+func (t *Token) findSlot(slotType SlotIdentificationType) (*uint, error) {
+	if slotType == SlotIdentificationByID {
+		_, err := t.ctx.GetTokenInfo(*t.Config.SlotID)
+		if err != nil {
+			return nil, err
+		}
+
+		// For SlotID, try direct access (optimization - no need to enumerate slots)
+		targetSlot := *t.Config.SlotID
+		return &targetSlot, nil
+	}
+
+	slots, err := t.ctx.GetSlotList(true)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get slot list")
+	}
+
 	switch slotType {
 	case SlotIdentificationByID:
-		// This case should not be reached due to optimization in connect()
-		return c.findSlotByID(slots)
+		// This case should not be reached due to optimization in configure()
+		return t.findSlotByID(slots)
 	case SlotIdentificationByIndex:
-		return c.findSlotByIndex(slots)
+		return t.findSlotByIndex(slots)
 	case SlotIdentificationByTokenLabel:
-		return c.findSlotByTokenLabel(slots)
+		return t.findSlotByTokenLabel(slots, t.ctx)
 	case SlotIdentificationByTokenSerial:
-		return c.findSlotByTokenSerial(slots)
+		return t.findSlotByTokenSerial(slots, t.ctx)
 	default:
-		return 0, errors.Errorf("unsupported slot identification type: %v", slotType)
+		return nil, errors.Errorf("unsupported slot identification type: %v", slotType)
 	}
 }
 
 // findSlotByID finds a slot by its slot ID
-func (c *Client) findSlotByID(slots []uint) (uint, error) {
-	targetSlotID := *c.config.SlotID
+func (t *Token) findSlotByID(slots []uint) (*uint, error) {
+	targetSlotID := *t.Config.SlotID
 	for _, slot := range slots {
+		slot := slot
 		if slot == targetSlotID {
-			return slot, nil
+			return &slot, nil
 		}
 	}
-	return 0, errors.Errorf("slot ID %d not found in available slots: %v", targetSlotID, slots)
+	return nil, errors.Errorf("slot ID %d not found in available slots: %v", targetSlotID, slots)
 }
 
 // findSlotByIndex finds a slot by its index in the slot list
-func (c *Client) findSlotByIndex(slots []uint) (uint, error) {
-	targetSlotIndex := *c.config.SlotIndex
+func (t *Token) findSlotByIndex(slots []uint) (*uint, error) {
+	targetSlotIndex := *t.Config.SlotIndex
 	if int(targetSlotIndex) >= len(slots) {
-		return 0, errors.Errorf("slot index %d is out of range, only %d slots available", targetSlotIndex, len(slots))
+		return nil, errors.Errorf("slot index %d is out of range, only %d slots available", targetSlotIndex, len(slots))
 	}
-	return slots[targetSlotIndex], nil
+	slot := slots[targetSlotIndex]
+	return &slot, nil
 }
 
 // findSlotByTokenLabel finds a slot by its token label
-func (c *Client) findSlotByTokenLabel(slots []uint) (uint, error) {
+func (t *Token) findSlotByTokenLabel(slots []uint, ctx *pkcs11.Ctx) (*uint, error) {
 	for _, slot := range slots {
-		tokenInfo, err := c.ctx.GetTokenInfo(slot)
+		slot := slot
+		tokenInfo, err := ctx.GetTokenInfo(slot)
 		if err != nil {
 			// Skip slots that can't be queried (might not have tokens)
 			continue
@@ -161,17 +174,19 @@ func (c *Client) findSlotByTokenLabel(slots []uint) (uint, error) {
 
 		// Compare token label (trim spaces as PKCS#11 labels are padded)
 		tokenLabel := strings.TrimSpace(tokenInfo.Label)
-		if tokenLabel == c.config.TokenLabel {
-			return slot, nil
+		if tokenLabel == t.Config.TokenLabel {
+			return &slot, nil
 		}
 	}
-	return 0, errors.Errorf("token with label '%s' not found in any available slot", c.config.TokenLabel)
+	return nil, errors.Errorf("token with label '%s' not found in any available slot", t.Config.TokenLabel)
 }
 
 // findSlotByTokenSerial finds a slot by its token serial number
-func (c *Client) findSlotByTokenSerial(slots []uint) (uint, error) {
+func (t *Token) findSlotByTokenSerial(slots []uint, ctx *pkcs11.Ctx) (*uint, error) {
+
 	for _, slot := range slots {
-		tokenInfo, err := c.ctx.GetTokenInfo(slot)
+		slot := slot
+		tokenInfo, err := ctx.GetTokenInfo(slot)
 		if err != nil {
 			// Skip slots that can't be queried (might not have tokens)
 			continue
@@ -179,51 +194,69 @@ func (c *Client) findSlotByTokenSerial(slots []uint) (uint, error) {
 
 		// Compare token serial number (trim spaces as PKCS#11 serials are padded)
 		tokenSerial := strings.TrimSpace(tokenInfo.SerialNumber)
-		if tokenSerial == c.config.TokenSerialNumber {
-			return slot, nil
+		if tokenSerial == t.Config.TokenSerialNumber {
+			return &slot, nil
 		}
 	}
-	return 0, errors.Errorf("token with serial number '%s' not found in any available slot", c.config.TokenSerialNumber)
+	return nil, errors.Errorf("token with serial number '%s' not found in any available slot", t.Config.TokenSerialNumber)
 }
 
-// GetSession returns the current PKCS#11 session handle.
-// It validates that the client is logged in and updates the last used timestamp.
-// This method is thread-safe.
-func (c *Client) GetSession() (pkcs11.SessionHandle, error) {
-	c.sessionMu.RLock()
-	defer c.sessionMu.RUnlock()
-
-	if !c.loggedIn {
-		return 0, errors.New("not logged in to PKCS#11 device")
+// GetContext acquires a context from the context pool.
+// It supports timeout control through the context parameter.
+// The returned Context must be released back to the pool using Release().
+// This method is thread-safe and supports true concurrent access.
+func (t *Token) GetSession(ctx context.Context) (*Session, error) {
+	if t.pool == nil {
+		return nil, errors.New("context pool not initialized")
 	}
 
-	c.lastUsed = time.Now()
-	return c.session, nil
+	return t.pool.acquire(ctx)
 }
 
-// GetContext returns the underlying PKCS#11 context.
-// This can be used for advanced operations not covered by the high-level API.
-func (c *Client) GetContext() *pkcs11.Ctx {
-	return c.ctx
+func (t *Token) GetTokenInfo(ctx context.Context) (*pkcs11.TokenInfo, error) {
+	session, err := t.GetSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Release()
+
+	tokenInfo, err := session.GetCtx().GetTokenInfo(t.pool.targetSlot)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get token info")
+	}
+
+	return &tokenInfo, nil
 }
 
-// IsConnected returns true if the client is currently logged in to the PKCS#11 device.
-// This method is thread-safe.
-func (c *Client) IsConnected() bool {
-	c.sessionMu.RLock()
-	defer c.sessionMu.RUnlock()
-	return c.loggedIn
+func (t *Token) GetSlotInfo(ctx context.Context) (*pkcs11.SlotInfo, error) {
+	session, err := t.GetSession(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Release()
+
+	slotInfo, err := session.GetCtx().GetSlotInfo(t.pool.targetSlot)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get token info")
+	}
+
+	return &slotInfo, nil
+}
+
+func (t *Token) GetSlotID() uint {
+	return t.pool.targetSlot
 }
 
 // Ping tests the connection to the PKCS#11 device by performing a simple session info query.
 // It returns an error if the device is not accessible or the session is invalid.
-func (c *Client) Ping(ctx context.Context) error {
-	session, err := c.GetSession()
+func (t *Token) Ping(ctx context.Context) error {
+	session, err := t.GetSession(ctx)
 	if err != nil {
 		return err
 	}
+	defer session.Release()
 
-	_, err = c.ctx.GetSessionInfo(session)
+	_, err = session.GetCtx().GetSessionInfo(session.GetHandle())
 	if err != nil {
 		return errors.Wrap(err, "PKCS#11 ping failed")
 	}
@@ -231,38 +264,25 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Close properly shuts down the PKCS#11 client by logging out, closing the session,
-// finalizing the context, and destroying the PKCS#11 context.
+// Close properly shuts down the PKCS#11 token by closing the context pool.
+// All context cleanup is handled by the context pool itself.
 // This method is safe to call multiple times and is thread-safe.
-func (c *Client) Close() error {
+func (t *Token) Close() error {
 	var finalErr error
 
-	c.closeOnce.Do(func() {
-		c.sessionMu.Lock()
-		defer c.sessionMu.Unlock()
-
-		if c.loggedIn && c.session != 0 {
-			if err := c.ctx.Logout(c.session); err != nil {
-				finalErr = errors.Wrap(err, "failed to logout")
-			}
-
-			if err := c.ctx.CloseSession(c.session); err != nil {
-				if finalErr == nil {
-					finalErr = errors.Wrap(err, "failed to close session")
-				}
-			}
-
-			c.loggedIn = false
-			c.session = 0
-		}
-
-		if err := c.ctx.Finalize(); err != nil {
-			if finalErr == nil {
-				finalErr = errors.Wrap(err, "failed to finalize PKCS#11")
+	t.closeOnce.Do(func() {
+		// Close context pool - this will clean up all sessions
+		if t.pool != nil {
+			if err := t.pool.close(); err != nil {
+				finalErr = errors.Wrap(err, "failed to close context pool")
 			}
 		}
 
-		c.ctx.Destroy()
+		// Clean up shared PKCS#11 context
+		if t.ctx != nil {
+			t.ctx.Finalize()
+			t.ctx.Destroy()
+		}
 	})
 
 	return finalErr
@@ -285,6 +305,13 @@ type Config struct {
 
 	// UserPIN is the PIN used to authenticate as a normal user (not SO)
 	UserPIN string
+
+	// Session Pool configuration
+	// MaxSessions is the maximum number of sessions in the pool (default: 1024)
+	MaxSessions int
+	// SessionAcquireTimeout is the timeout for acquiring a session from the pool
+	// (default: 0 means blocking wait)
+	SessionAcquireTimeout time.Duration
 }
 
 // SlotIdentificationType represents the type of slot identification method used
@@ -361,6 +388,14 @@ func (c *Config) Validate() error {
 	_, err := c.GetSlotIdentificationType()
 	if err != nil {
 		return errors.Wrap(err, "invalid slot identification configuration")
+	}
+
+	// Validate session pool configuration
+	if c.MaxSessions < 0 {
+		return errors.New("MaxSessions cannot be negative")
+	}
+	if c.SessionAcquireTimeout < 0 {
+		return errors.New("SessionAcquireTimeout cannot be negative")
 	}
 
 	return nil

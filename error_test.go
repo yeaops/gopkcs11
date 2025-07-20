@@ -36,7 +36,7 @@ func TestPKCS11Error_Error(t *testing.T) {
 				CKRCode: 123,
 				Cause:   errors.New("underlying"),
 			},
-			expected: "PKCS#11 error [3]: key not found (CKR: 0x0000007B) - underlying",
+			expected: "PKCS#11 error [4]: key not found (CKR: 0x0000007B) - underlying",
 		},
 		{
 			name: "error without cause",
@@ -46,7 +46,7 @@ func TestPKCS11Error_Error(t *testing.T) {
 				CKRCode: 456,
 				Cause:   nil,
 			},
-			expected: "PKCS#11 error [6]: login failed (CKR: 0x000001C8)",
+			expected: "PKCS#11 error [7]: login failed (CKR: 0x000001C8)",
 		},
 	}
 
@@ -395,3 +395,4 @@ func TestIsSessionError(t *testing.T) {
 		})
 	}
 }
+
