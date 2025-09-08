@@ -308,6 +308,39 @@ func (r *RSAKeyPair) SignPSS(hash crypto.Hash, digest []byte) ([]byte, error) {
 	return r.Sign(rand.Reader, digest, opts)
 }
 
+// PrivateEncrypt provides a method to perform RSA private key encryption without padding (signing)
+// RSA_NO_PADDING
+// https://docs.openssl.org/master/man3/RSA_private_encrypt/
+// TODO：refactor to Sign method by options
+func (r *RSAKeyPair) PrivateEncrypt(data []byte) ([]byte, error) {
+
+	if len(data)*8 != r.KeySize {
+		return nil, errors.Errorf("data length must be equal to key size (%d bits)", r.KeySize)
+	}
+
+	session, err := r.token.GetSession(context.Background())
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
+
+	// Use CKM_RSA_X_509 for RSA NO_PADDING
+	mechanism := pkcs11.NewMechanism(pkcs11.CKM_RSA_X_509, nil)
+
+	if err := session.GetCtx().SignInit(sessionHandle, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	signature, err := session.GetCtx().Sign(sessionHandle, data)
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	return signature, nil
+}
+
 // DecryptPKCS1v15 provides a convenient method for RSA decryption with PKCS#1 v1.5 padding.
 func (r *RSAKeyPair) DecryptPKCS1v15(ciphertext []byte) ([]byte, error) {
 	opts := &rsa.PKCS1v15DecryptOptions{}
