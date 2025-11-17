@@ -308,11 +308,57 @@ func (r *RSAKeyPair) SignPSS(hash crypto.Hash, digest []byte) ([]byte, error) {
 	return r.Sign(rand.Reader, digest, opts)
 }
 
+type RSAPrivateEncryptPadding int
+
+const (
+	RSA_PRIVATEENCRYPT_NO_PADDING RSAPrivateEncryptPadding = iota + 1
+	RSA_PRIVATEENCRYPT_PKCS1_PADDING
+)
+
 // PrivateEncrypt provides a method to perform RSA private key encryption without padding (signing)
 // RSA_NO_PADDING
+// RSA_PKCS1_PADDING
 // https://docs.openssl.org/master/man3/RSA_private_encrypt/
 // TODO：refactor to Sign method by options
-func (r *RSAKeyPair) PrivateEncrypt(data []byte) ([]byte, error) {
+func (r *RSAKeyPair) PrivateEncrypt(data []byte, padding RSAPrivateEncryptPadding) ([]byte, error) {
+
+	switch padding {
+	case RSA_PRIVATEENCRYPT_NO_PADDING:
+		return r.privateEncryptNoPadding(data)
+	case RSA_PRIVATEENCRYPT_PKCS1_PADDING:
+		return r.privateEncryptPkcs1Padding(data)
+	default:
+		return nil, errors.Errorf("unknown padding method: %d", padding)
+	}
+
+}
+
+func (r *RSAKeyPair) privateEncryptPkcs1Padding(data []byte) ([]byte, error) {
+
+	session, err := r.token.GetSession(context.Background())
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+	defer session.Release()
+
+	sessionHandle := session.GetHandle()
+
+	// Use CKM_RSA_PKCS
+	mechanism := pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS, nil)
+
+	if err := session.GetCtx().SignInit(sessionHandle, []*pkcs11.Mechanism{mechanism}, r.Handle); err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	signature, err := session.GetCtx().Sign(sessionHandle, data)
+	if err != nil {
+		return nil, ConvertPKCS11Error(err)
+	}
+
+	return signature, nil
+}
+
+func (r *RSAKeyPair) privateEncryptNoPadding(data []byte) ([]byte, error) {
 
 	if len(data)*8 != r.KeySize {
 		return nil, errors.Errorf("data length must be equal to key size (%d bits)", r.KeySize)
