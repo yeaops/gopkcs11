@@ -224,7 +224,6 @@ func (p *Pool) validateSession(session *Session) bool {
 // closeSession properly closes a session, logs out, but does not destroy the shared context.
 func (p *Pool) closeSession(session *Session) {
 	if session != nil && session.ctx != nil && session.handle != 0 {
-		session.ctx.Logout(session.handle)
 		session.ctx.CloseSession(session.handle)
 	}
 }
