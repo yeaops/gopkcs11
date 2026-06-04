@@ -263,6 +263,10 @@ func (r *RSAKeyPair) getRSADecryptMechanism(opts crypto.DecrypterOpts) (*pkcs11.
 			mechanismType = pkcs11.CKM_RSA_PKCS_OAEP
 		case crypto.SHA256:
 			mechanismType = pkcs11.CKM_RSA_PKCS_OAEP
+		case crypto.SHA384:
+			mechanismType = pkcs11.CKM_RSA_PKCS_OAEP
+		case crypto.SHA512:
+			mechanismType = pkcs11.CKM_RSA_PKCS_OAEP
 		default:
 			return nil, errors.New("unsupported hash function for RSA-OAEP")
 		}
@@ -280,6 +284,20 @@ func (r *RSAKeyPair) getRSADecryptMechanism(opts crypto.DecrypterOpts) (*pkcs11.
 			oaepParams = &pkcs11.OAEPParams{
 				HashAlg:    pkcs11.CKM_SHA256,
 				MGF:        pkcs11.CKG_MGF1_SHA256,
+				SourceType: pkcs11.CKZ_DATA_SPECIFIED,
+				SourceData: nil,
+			}
+		case crypto.SHA384:
+			oaepParams = &pkcs11.OAEPParams{
+				HashAlg:    pkcs11.CKM_SHA384,
+				MGF:        pkcs11.CKG_MGF1_SHA384,
+				SourceType: pkcs11.CKZ_DATA_SPECIFIED,
+				SourceData: nil,
+			}
+		case crypto.SHA512:
+			oaepParams = &pkcs11.OAEPParams{
+				HashAlg:    pkcs11.CKM_SHA512,
+				MGF:        pkcs11.CKG_MGF1_SHA512,
 				SourceType: pkcs11.CKZ_DATA_SPECIFIED,
 				SourceData: nil,
 			}
